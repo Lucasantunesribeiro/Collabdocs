@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Dashboard } from '@/components/Dashboard';
 import { LoginPage } from '@/components/LoginPage';
+import { useAuth } from '@/context/AuthContext';
 
 interface User {
   id: string;
@@ -13,40 +14,15 @@ interface User {
 }
 
 export default function HomePage() {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const { user, isLoading: authLoading, logout } = useAuth();
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
     setIsClient(true);
-    
-    // Verificar se há usuário logado no localStorage
-    const savedUser = localStorage.getItem('collabdocs_user');
-    const savedToken = localStorage.getItem('collabdocs_token');
-    
-    if (savedUser && savedToken) {
-      try {
-        const userData = JSON.parse(savedUser);
-        setUser(userData);
-      } catch (err) {
-        console.error('Erro ao carregar usuário:', err);
-        localStorage.removeItem('collabdocs_user');
-        localStorage.removeItem('collabdocs_token');
-      }
-    }
-    
-    setIsLoading(false);
   }, []);
 
-  const handleLogin = (userData: User) => {
-    setUser(userData);
-  };
-
   const handleLogout = () => {
-    setUser(null);
-    localStorage.removeItem('collabdocs_user');
-    localStorage.removeItem('collabdocs_token');
-    window.location.reload();
+    logout();
   };
 
   // Renderização condicional para evitar erro de hidratação
@@ -69,7 +45,7 @@ export default function HomePage() {
     );
   }
 
-  if (isLoading) {
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex items-center justify-center">
         <div className="text-center animate-fade-in">
@@ -123,7 +99,7 @@ export default function HomePage() {
 
           {/* Login Form */}
           <div className="max-w-md mx-auto">
-            <LoginPage onLogin={handleLogin} />
+            <LoginPage />
           </div>
 
           {/* Features */}
@@ -157,6 +133,15 @@ export default function HomePage() {
     );
   }
 
+  // Converter JWTPayload para User para compatibilidade
+  const userData: User = {
+    id: user.sub,
+    name: user.name,
+    email: user.email,
+    avatar_url: user.avatar_url,
+    provider: user.provider,
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       {/* Header */}
@@ -172,7 +157,7 @@ export default function HomePage() {
                   CollabDocs
                 </h1>
                 <p className="text-sm text-gray-600">
-                  Olá, {user.name}! 👋
+                  Olá, {userData.name}! 👋
                 </p>
               </div>
             </div>
@@ -180,20 +165,20 @@ export default function HomePage() {
             <div className="flex items-center gap-4">
               {/* Avatar do usuário */}
               <div className="flex items-center gap-3">
-                {user.avatar_url ? (
+                {userData.avatar_url ? (
                   <img
-                    src={user.avatar_url}
-                    alt={user.name}
+                    src={userData.avatar_url}
+                    alt={userData.name}
                     className="w-10 h-10 rounded-full border-2 border-white shadow-md"
                   />
                 ) : (
                   <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center text-white font-semibold shadow-md">
-                    {user.name.charAt(0).toUpperCase()}
+                    {userData.name.charAt(0).toUpperCase()}
                   </div>
                 )}
                 <div className="hidden sm:block text-right">
-                  <p className="text-sm font-medium text-gray-900">{user.name}</p>
-                  <p className="text-xs text-gray-500 capitalize">{user.provider}</p>
+                  <p className="text-sm font-medium text-gray-900">{userData.name}</p>
+                  <p className="text-xs text-gray-500 capitalize">{userData.provider}</p>
                 </div>
               </div>
               
@@ -214,7 +199,7 @@ export default function HomePage() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
-        <Dashboard user={user} />
+        <Dashboard user={userData} />
       </main>
     </div>
   );

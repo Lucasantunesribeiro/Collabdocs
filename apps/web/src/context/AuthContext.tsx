@@ -82,6 +82,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setUser(null);
     setToken(null);
     localStorage.removeItem('collabdocs_token');
+    localStorage.removeItem('collabdocs_user');
   };
 
   const value: AuthContextType = {

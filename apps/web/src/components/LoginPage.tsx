@@ -3,11 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 
-interface LoginPageProps {
-  onLogin?: (user: any) => void;
-}
-
-export function LoginPage({ onLogin }: LoginPageProps) {
+export function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { user, login } = useAuth();
@@ -102,10 +98,6 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       avatar_url: null,
       provider: 'demo'
     };
-    
-    if (onLogin) {
-      onLogin(demoUser);
-    }
     
     // Salvar no localStorage para persistir
     localStorage.setItem('collabdocs_user', JSON.stringify(demoUser));
