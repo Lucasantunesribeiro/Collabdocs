@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     
     if (!code) {
       console.error('❌ Google callback: No code provided')
-      return NextResponse.redirect('/?error=no_code')
+      return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/?error=no_code`)
     }
     
     // Verificar variáveis de ambiente
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     
     if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
       console.error('❌ Google callback: Missing environment variables')
-      return NextResponse.redirect('/?error=config_error')
+      return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/?error=config_error`)
     }
     
     console.log('✅ Google callback - Variáveis de ambiente OK')
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     if (!tokenResponse.ok) {
       const errorText = await tokenResponse.text()
       console.error('❌ Google callback - Token request failed:', tokenResponse.status, errorText)
-      return NextResponse.redirect('/?error=token_request_failed')
+      return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/?error=token_request_failed`)
     }
     
     const tokenData = await tokenResponse.json()
@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
       if (!userResponse.ok) {
         const errorText = await userResponse.text()
         console.error('❌ Google callback - User request failed:', userResponse.status, errorText)
-        return NextResponse.redirect('/?error=user_request_failed')
+        return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/?error=user_request_failed`)
       }
       
       const userData = await userResponse.json()
@@ -89,19 +89,19 @@ export async function GET(request: NextRequest) {
       }
       
       // Redirecionar para a página principal com os dados do usuário
-      const redirectUrl = `/?user=${encodeURIComponent(JSON.stringify(user))}`
+      const redirectUrl = `${process.env.NEXTAUTH_URL}/?user=${encodeURIComponent(JSON.stringify(user))}`
       console.log('🚀 Google callback - Redirecionando para:', redirectUrl)
       
       return NextResponse.redirect(redirectUrl)
     } else {
       console.error('❌ Google callback - No access token in response:', tokenData)
-      return NextResponse.redirect('/?error=token_failed')
+      return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/?error=token_failed`)
     }
   } catch (error) {
     console.error('💥 Google callback - Erro inesperado:', error)
     if (error instanceof Error) {
       console.error('   Stack:', error.stack)
     }
-    return NextResponse.redirect('/?error=oauth_failed')
+    return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/?error=oauth_failed`)
   }
 }
