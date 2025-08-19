@@ -15,8 +15,11 @@ interface User {
 export default function HomePage() {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
+    setIsClient(true);
+    
     // Verificar se há usuário logado no localStorage
     const savedUser = localStorage.getItem('collabdocs_user');
     const savedToken = localStorage.getItem('collabdocs_token');
@@ -45,6 +48,26 @@ export default function HomePage() {
     localStorage.removeItem('collabdocs_token');
     window.location.reload();
   };
+
+  // Renderização condicional para evitar erro de hidratação
+  if (!isClient) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex items-center justify-center">
+        <div className="text-center animate-fade-in">
+          <div className="relative">
+            <div className="w-20 h-20 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-2xl">
+              <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center">
+                <span className="text-2xl">📝</span>
+              </div>
+            </div>
+            <div className="absolute inset-0 w-20 h-20 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full animate-ping opacity-20"></div>
+          </div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">CollabDocs</h2>
+          <p className="text-gray-600">Inicializando...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -117,7 +140,7 @@ export default function HomePage() {
               <div className="w-16 h-16 bg-gradient-to-r from-green-500 to-green-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg group-hover:shadow-xl transition-all duration-300 group-hover:-translate-y-1">
                 <span className="text-2xl">🔒</span>
               </div>
-              <h3 className="text-lg font-semibold text-gray-800 mb-2">Segurança</h3>
+              <h3 className="text-2xl font-semibold text-gray-800 mb-2">Segurança</h3>
               <p className="text-gray-600 text-sm">Autenticação OAuth e controle de acesso granular</p>
             </div>
             
