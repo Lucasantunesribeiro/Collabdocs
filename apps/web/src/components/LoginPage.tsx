@@ -154,7 +154,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       <div className="mt-8 text-center">
         <div className="bg-blue-50 rounded-2xl p-4 border border-blue-100">
           <div className="flex items-center justify-center gap-2 text-blue-700 mb-2">
-            <span className="text-lg">💡</span>
+            <span className="text-lg">��</span>
             <span className="font-medium">Dica</span>
           </div>
           <p className="text-blue-600 text-sm">
