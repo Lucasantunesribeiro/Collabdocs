@@ -52,13 +52,11 @@ class ApiService {
       ...options,
     };
 
-    // Add demo user token for development
-    if (process.env.NODE_ENV === 'development') {
-      config.headers = {
-        ...config.headers,
-        'Authorization': 'Bearer demo-token',
-      };
-    }
+    // Add demo user token for development and production (MVP)
+    config.headers = {
+      ...config.headers,
+      'Authorization': 'Bearer demo-token',
+    };
 
     try {
       const response = await fetch(url, config);
