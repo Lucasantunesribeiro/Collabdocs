@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     
     if (!code) {
       console.error('❌ GitHub callback: No code provided')
-      return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/?error=no_code`)
+      return NextResponse.redirect('https://collabdocs-app.vercel.app/?error=no_code')
     }
     
     // Verificar variáveis de ambiente
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     
     if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET) {
       console.error('❌ GitHub callback: Missing environment variables')
-      return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/?error=config_error`)
+      return NextResponse.redirect('https://collabdocs-app.vercel.app/?error=config_error')
     }
     
     console.log('✅ GitHub callback - Variáveis de ambiente OK')
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
     if (!tokenResponse.ok) {
       const errorText = await tokenResponse.text()
       console.error('❌ GitHub callback - Token request failed:', tokenResponse.status, errorText)
-      return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/?error=token_request_failed`)
+      return NextResponse.redirect('https://collabdocs-app.vercel.app/?error=token_request_failed')
     }
     
     const tokenData = await tokenResponse.json()
@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
       if (!userResponse.ok) {
         const errorText = await userResponse.text()
         console.error('❌ GitHub callback - User request failed:', userResponse.status, errorText)
-        return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/?error=user_request_failed`)
+        return NextResponse.redirect('https://collabdocs-app.vercel.app/?error=user_request_failed')
       }
       
       const userData = await userResponse.json()
@@ -85,19 +85,19 @@ export async function GET(request: NextRequest) {
       }
       
       // Redirecionar para a página principal com os dados do usuário
-      const redirectUrl = `${process.env.NEXTAUTH_URL}/?user=${encodeURIComponent(JSON.stringify(user))}`
+      const redirectUrl = `https://collabdocs-app.vercel.app/?user=${encodeURIComponent(JSON.stringify(user))}`
       console.log('🚀 GitHub callback - Redirecionando para:', redirectUrl)
       
       return NextResponse.redirect(redirectUrl)
     } else {
       console.error('❌ GitHub callback - No access token in response:', tokenData)
-      return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/?error=token_failed`)
+      return NextResponse.redirect('https://collabdocs-app.vercel.app/?error=token_failed')
     }
   } catch (error) {
     console.error('💥 GitHub callback - Erro inesperado:', error)
     if (error instanceof Error) {
       console.error('   Stack:', error.stack)
     }
-    return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/?error=oauth_failed`)
+    return NextResponse.redirect('https://collabdocs-app.vercel.app/?error=oauth_failed')
   }
 }

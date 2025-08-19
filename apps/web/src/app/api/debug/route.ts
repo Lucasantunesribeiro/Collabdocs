@@ -42,12 +42,21 @@ export async function GET(request: NextRequest) {
       googleTest = { error: error instanceof Error ? error.message : String(error) }
     }
     
+    // Verificar configurações do Google OAuth
+    const googleOAuthConfig = {
+      clientId: !!process.env.GOOGLE_CLIENT_ID,
+      clientSecret: !!process.env.GOOGLE_CLIENT_SECRET,
+      nextAuthUrl: process.env.NEXTAUTH_URL,
+      redirectUri: process.env.NEXTAUTH_URL ? `${process.env.NEXTAUTH_URL}/api/auth/callback/google` : null,
+    }
+    
     return NextResponse.json({
       timestamp: new Date().toISOString(),
       environment: process.env.NODE_ENV,
       envCheck,
       githubTest,
       googleTest,
+      googleOAuthConfig,
       message: 'Debug endpoint working',
     })
   } catch (error) {
