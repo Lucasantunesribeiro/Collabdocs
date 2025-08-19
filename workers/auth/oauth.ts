@@ -184,7 +184,30 @@ async function handleGitHubCallback(request: Request, env: any): Promise<Respons
     frontendUrl.searchParams.set('token', jwt);
     frontendUrl.searchParams.set('user', JSON.stringify(user));
     
-    return Response.redirect(frontendUrl.toString(), 302);
+    // Use HTML redirect instead of Response.redirect to avoid Worker error
+    const htmlRedirect = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Autenticação Realizada</title>
+      <meta charset="utf-8">
+    </head>
+    <body>
+      <div style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+        <h2>✅ Autenticação realizada com sucesso!</h2>
+        <p>Redirecionando para o CollabDocs...</p>
+        <script>
+          window.location.href = "${frontendUrl.toString()}";
+        </script>
+      </div>
+    </body>
+    </html>
+    `;
+    
+    return new Response(htmlRedirect, {
+      status: 200,
+      headers: { 'Content-Type': 'text/html' }
+    });
 
   } catch (error) {
     console.error('GitHub OAuth error:', error);
@@ -293,7 +316,30 @@ async function handleGoogleCallback(request: Request, env: any): Promise<Respons
     frontendUrl.searchParams.set('token', jwt);
     frontendUrl.searchParams.set('user', JSON.stringify(user));
     
-    return Response.redirect(frontendUrl.toString(), 302);
+    // Use HTML redirect instead of Response.redirect to avoid Worker error
+    const htmlRedirect = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Autenticação Realizada</title>
+      <meta charset="utf-8">
+    </head>
+    <body>
+      <div style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+        <h2>✅ Autenticação realizada com sucesso!</h2>
+        <p>Redirecionando para o CollabDocs...</p>
+        <script>
+          window.location.href = "${frontendUrl.toString()}";
+        </script>
+      </div>
+    </body>
+    </html>
+    `;
+    
+    return new Response(htmlRedirect, {
+      status: 200,
+      headers: { 'Content-Type': 'text/html' }
+    });
 
   } catch (error) {
     console.error('Google OAuth error:', error);
