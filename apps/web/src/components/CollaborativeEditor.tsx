@@ -1,62 +1,167 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+
+interface DocumentData {
+  id: string;
+  content: string;
+  lastSaved: Date;
+  isDirty: boolean;
+}
 
 export function CollaborativeEditor() {
   const [content, setContent] = useState(`# Documento de Demonstração
 
 ## Bem-vindo ao CollabDocs! 🎉
 
-Este é um documento de exemplo que demonstra as funcionalidades do nosso sistema de documentos colaborativos.
+Este é um documento de exemplo para demonstrar as funcionalidades do sistema de documentos colaborativos.
 
-### ✨ Funcionalidades Principais
+### ✨ Funcionalidades Disponíveis
 
-- **Edição em Tempo Real**: Múltiplos usuários podem editar simultaneamente
-- **Sincronização Automática**: Todas as alterações são sincronizadas instantaneamente
-- **Controle de Versões**: Histórico completo de todas as mudanças
-- **Comentários**: Adicione comentários e feedback em qualquer parte do documento
+- **Edição em tempo real** - Veja as alterações instantaneamente
+- **Salvamento automático** - Seu trabalho é preservado automaticamente
+- **Histórico de versões** - Acompanhe todas as mudanças
+- **Colaboração simultânea** - Múltiplos usuários podem editar juntos
 
 ### 🚀 Como Usar
 
-1. **Digite** no editor abaixo para ver as mudanças em tempo real
-2. **Compartilhe** o link com seus colaboradores
-3. **Colabore** em tempo real com sua equipe
+1. **Digite** no editor abaixo
+2. **Clique em Salvar** para persistir suas alterações
+3. **Compartilhe** o documento com sua equipe
+4. **Colabore** em tempo real
 
-### 📝 Exemplo de Conteúdo
+### 💡 Dicas
 
-Aqui você pode escrever qualquer tipo de conteúdo:
-
-- Listas com marcadores
-- **Texto em negrito**
-- *Texto em itálico*
-- \`código inline\`
-
-\`\`\`javascript
-// Exemplo de código
-function helloWorld() {
-  console.log("Olá, CollabDocs!");
-}
-\`\`\`
-
-### 🎯 Próximos Passos
-
-- [ ] Implementar autenticação OAuth
-- [ ] Adicionar suporte a arquivos
-- [ ] Criar sistema de comentários
-- [ ] Implementar histórico de versões
-
----
+- Use **Markdown** para formatação
+- **Salve frequentemente** para não perder trabalho
+- **Comunique-se** com sua equipe durante a edição
 
 *Este documento foi criado para demonstrar as capacidades do CollabDocs. Experimente editar o conteúdo!*`);
 
   const [isTyping, setIsTyping] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date>(new Date());
+  const [isDirty, setIsDirty] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
+
+  // Simular salvamento automático
+  useEffect(() => {
+    if (isDirty && !isTyping) {
+      const timer = setTimeout(() => {
+        handleAutoSave();
+      }, 2000); // Salvar automaticamente após 2 segundos sem digitação
+
+      return () => clearTimeout(timer);
+    }
+  }, [content, isTyping, isDirty]);
 
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setContent(e.target.value);
+    const newContent = e.target.value;
+    setContent(newContent);
     setIsTyping(true);
-    
+    setIsDirty(true);
+
     // Simular indicador de digitação
     setTimeout(() => setIsTyping(false), 1000);
+  };
+
+  const handleAutoSave = async () => {
+    if (!isDirty) return;
+    
+    setIsSaving(true);
+    setSaveStatus('saving');
+    
+    try {
+      // Simular salvamento automático
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      setLastSaved(new Date());
+      setIsDirty(false);
+      setSaveStatus('saved');
+      
+      // Salvar no localStorage para persistência
+      localStorage.setItem('collabdocs_document_content', content);
+      localStorage.setItem('collabdocs_document_last_saved', new Date().toISOString());
+      
+    } catch (error) {
+      setSaveStatus('error');
+      console.error('Erro ao salvar automaticamente:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleManualSave = async () => {
+    setIsSaving(true);
+    setSaveStatus('saving');
+    
+    try {
+      // Simular salvamento manual
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      setLastSaved(new Date());
+      setIsDirty(false);
+      setSaveStatus('saved');
+      
+      // Salvar no localStorage para persistência
+      localStorage.setItem('collabdocs_document_content', content);
+      localStorage.setItem('collabdocs_document_last_saved', new Date().toISOString());
+      
+      // Mostrar feedback visual
+      setTimeout(() => setSaveStatus('saved'), 2000);
+      
+    } catch (error) {
+      setSaveStatus('error');
+      console.error('Erro ao salvar:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Carregar conteúdo salvo ao inicializar
+  useEffect(() => {
+    const savedContent = localStorage.getItem('collabdocs_document_content');
+    const savedLastSaved = localStorage.getItem('collabdocs_document_last_saved');
+    
+    if (savedContent) {
+      setContent(savedContent);
+      setIsDirty(false);
+    }
+    
+    if (savedLastSaved) {
+      setLastSaved(new Date(savedLastSaved));
+    }
+  }, []);
+
+  const formatTimeAgo = (date: Date) => {
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'agora mesmo';
+    if (diffMins < 60) return `há ${diffMins} minuto${diffMins > 1 ? 's' : ''}`;
+    if (diffHours < 24) return `há ${diffHours} hora${diffHours > 1 ? 's' : ''}`;
+    return `há ${diffDays} dia${diffDays > 1 ? 's' : ''}`;
+  };
+
+  const getSaveStatusColor = () => {
+    switch (saveStatus) {
+      case 'saved': return 'text-green-600';
+      case 'saving': return 'text-blue-600';
+      case 'error': return 'text-red-600';
+      default: return 'text-gray-600';
+    }
+  };
+
+  const getSaveStatusIcon = () => {
+    switch (saveStatus) {
+      case 'saved': return '✅';
+      case 'saving': return '⏳';
+      case 'error': return '❌';
+      default: return '💾';
+    }
   };
 
   return (
@@ -77,11 +182,11 @@ function helloWorld() {
             </button>
             <button className="p-2 text-gray-600 hover:text-gray-800 hover:bg-white rounded-lg transition-all duration-200 group">
               <svg className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zM21 5a2 2 0 00-2-2h-4a2 2 0 00-2 2v12a4 4 0 004 4z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zM21 5a2 2 0 00-2-2h-4a2 2 0 00-2 2v12a2 2 0 004 4z" />
               </svg>
             </button>
           </div>
-          
+
           <div className="flex items-center gap-4">
             {/* Indicador de digitação */}
             {isTyping && (
@@ -94,12 +199,39 @@ function helloWorld() {
                 <span>Digitando...</span>
               </div>
             )}
-            
-            {/* Status de sincronização */}
-            <div className="flex items-center gap-2 text-sm text-green-600">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <span>Sincronizado</span>
+
+            {/* Status de salvamento */}
+            <div className={`flex items-center gap-2 text-sm ${getSaveStatusColor()}`}>
+              <span className="text-lg">{getSaveStatusIcon()}</span>
+              <span>
+                {saveStatus === 'saved' && 'Salvo'}
+                {saveStatus === 'saving' && 'Salvando...'}
+                {saveStatus === 'error' && 'Erro ao salvar'}
+              </span>
             </div>
+
+            {/* Botão de salvar manual */}
+            <button
+              onClick={handleManualSave}
+              disabled={isSaving || !isDirty}
+              className={`px-4 py-2 rounded-xl font-medium transition-all duration-200 flex items-center gap-2 ${
+                isDirty && !isSaving
+                  ? 'bg-blue-500 hover:bg-blue-600 text-white shadow-lg hover:shadow-xl'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              }`}
+            >
+              {isSaving ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  Salvando...
+                </>
+              ) : (
+                <>
+                  <span className="text-lg">💾</span>
+                  Salvar
+                </>
+              )}
+            </button>
           </div>
         </div>
       </div>
@@ -112,7 +244,7 @@ function helloWorld() {
           className="w-full min-h-[600px] p-6 bg-white border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 resize-none font-mono text-gray-800 leading-relaxed"
           placeholder="Comece a digitar seu documento..."
         />
-        
+
         {/* Overlay de colaboração */}
         <div className="absolute top-4 right-4">
           <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/50 p-4">
@@ -158,10 +290,12 @@ function helloWorld() {
             <span>📊 {content.split(' ').length} palavras</span>
             <span>📄 {content.split('\n').length} linhas</span>
           </div>
-          
+
           <div className="flex items-center gap-4">
-            <span>💾 Auto-salvo</span>
-            <span>🔄 Última sincronização: agora</span>
+            <span className={`flex items-center gap-2 ${isDirty ? 'text-orange-600' : 'text-green-600'}`}>
+              {isDirty ? '🔄' : '💾'} {isDirty ? 'Não salvo' : 'Salvo'}
+            </span>
+            <span>🕒 Último salvamento: {formatTimeAgo(lastSaved)}</span>
           </div>
         </div>
       </div>
@@ -175,10 +309,10 @@ function helloWorld() {
           <div>
             <h4 className="font-semibold text-blue-800 mb-2">Dicas para Colaboração Eficiente</h4>
             <ul className="text-sm text-blue-700 space-y-1">
-              <li>• Use comentários para discutir mudanças específicas</li>
-              <li>• Salve versões importantes antes de grandes alterações</li>
+              <li>• Use o botão "Salvar" para persistir suas alterações</li>
+              <li>• O salvamento automático acontece após 2 segundos sem digitação</li>
               <li>• Comunique-se com sua equipe sobre mudanças significativas</li>
-              <li>• Use o histórico para reverter alterações quando necessário</li>
+              <li>• Use Markdown para formatação avançada</li>
             </ul>
           </div>
         </div>

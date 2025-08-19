@@ -15,21 +15,10 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     setError(null);
     
     try {
-      const response = await fetch('https://collab-docs.collabdocs.workers.dev/auth/github');
-      if (response.ok) {
-        const data = await response.json();
-        if (data.error === 'OAuth em desenvolvimento') {
-          setError('GitHub OAuth está em desenvolvimento. Use o Modo Demo por enquanto.');
-        } else {
-          // Redirecionar para GitHub OAuth
-          window.location.href = response.url;
-        }
-      } else {
-        setError('Erro ao conectar com GitHub');
-      }
+      // Redirecionar para GitHub OAuth
+      window.location.href = 'https://collab-docs.collabdocs.workers.dev/auth/github';
     } catch (err) {
-      setError('Erro de conexão com o servidor');
-    } finally {
+      setError('Erro ao conectar com GitHub');
       setIsLoading(false);
     }
   };
@@ -39,21 +28,10 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     setError(null);
     
     try {
-      const response = await fetch('https://collab-docs.collabdocs.workers.dev/auth/google');
-      if (response.ok) {
-        const data = await response.json();
-        if (data.error === 'OAuth em desenvolvimento') {
-          setError('Google OAuth está em desenvolvimento. Use o Modo Demo por enquanto.');
-        } else {
-          // Redirecionar para Google OAuth
-          window.location.href = response.url;
-        }
-      } else {
-        setError('Erro ao conectar com Google');
-      }
+      // Redirecionar para Google OAuth
+      window.location.href = 'https://collab-docs.collabdocs.workers.dev/auth/google';
     } catch (err) {
-      setError('Erro de conexão com o servidor');
-    } finally {
+      setError('Erro ao conectar com Google');
       setIsLoading(false);
     }
   };

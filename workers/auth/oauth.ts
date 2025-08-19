@@ -84,51 +84,167 @@ export async function handleAuth(request: Request, env: Env): Promise<Response> 
 }
 
 function handleGitHubLogin(env: Env): Response {
-  // Para MVP, vamos retornar um erro informando que OAuth está em desenvolvimento
-  return new Response(JSON.stringify({ 
-    error: 'OAuth em desenvolvimento',
-    message: 'GitHub OAuth será implementado em breve. Use o Modo Demo por enquanto.',
-    status: 'development'
-  }), { 
-    status: 501,
-    headers: { 'Content-Type': 'application/json' }
-  });
+  const githubAuthUrl = new URL('https://github.com/login/oauth/authorize');
+  githubAuthUrl.searchParams.set('client_id', env.GITHUB_CLIENT_ID);
+  githubAuthUrl.searchParams.set('scope', 'user:email');
+  githubAuthUrl.searchParams.set('redirect_uri', `${getBaseUrl(env)}/auth/github/callback`);
+  githubAuthUrl.searchParams.set('state', crypto.randomUUID());
+
+  return Response.redirect(githubAuthUrl.toString(), 302);
 }
 
 async function handleGitHubCallback(request: Request, env: Env): Promise<Response> {
-  // Para MVP, vamos retornar um erro informando que OAuth está em desenvolvimento
-  return new Response(JSON.stringify({ 
-    error: 'OAuth em desenvolvimento',
-    message: 'GitHub OAuth será implementado em breve. Use o Modo Demo por enquanto.',
-    status: 'development'
-  }), { 
-    status: 501,
-    headers: { 'Content-Type': 'application/json' }
-  });
+  const url = new URL(request.url);
+  const code = url.searchParams.get('code');
+  const state = url.searchParams.get('state');
+
+  if (!code) {
+    return new Response('Authorization code not found', { status: 400 });
+  }
+
+  try {
+    // Exchange code for access token
+    const tokenResponse = await fetch('https://github.com/login/oauth/access_token', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        client_id: env.GITHUB_CLIENT_ID,
+        client_secret: env.GITHUB_CLIENT_SECRET,
+        code,
+      }),
+    });
+
+    const tokenData = await tokenResponse.json() as { access_token: string };
+    
+    if (!tokenData.access_token) {
+      throw new Error('Failed to get access token');
+    }
+
+    // Get user info
+    const userResponse = await fetch('https://api.github.com/user', {
+      headers: {
+        'Authorization': `Bearer ${tokenData.access_token}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'CollabDocs/1.0',
+      },
+    });
+
+    const githubUser = await userResponse.json() as GitHubUser;
+
+    // Get primary email if not public
+    let email = githubUser.email;
+    if (!email) {
+      const emailResponse = await fetch('https://api.github.com/user/emails', {
+        headers: {
+          'Authorization': `Bearer ${tokenData.access_token}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'CollabDocs/1.0',
+        },
+      });
+      
+      const emails = await emailResponse.json() as Array<{ email: string; primary: boolean }>;
+      const primaryEmail = emails.find(e => e.primary);
+      email = primaryEmail?.email || emails[0]?.email;
+    }
+
+    if (!email) {
+      throw new Error('No email found for GitHub user');
+    }
+
+    // Create or update user
+    const user = await createOrUpdateUser(env, {
+      provider: 'github',
+      provider_id: githubUser.id.toString(),
+      email,
+      name: githubUser.name || githubUser.login,
+      avatar_url: githubUser.avatar_url,
+    });
+
+    // Create JWT
+    const jwt = await createJWT(user, env);
+
+    // Redirect to frontend with token
+    const frontendUrl = new URL(env.FRONTEND_URL || 'http://localhost:3000');
+    frontendUrl.searchParams.set('token', jwt);
+    
+    return Response.redirect(frontendUrl.toString(), 302);
+
+  } catch (error) {
+    console.error('GitHub OAuth error:', error);
+    return new Response('Authentication failed', { status: 500 });
+  }
 }
 
 function handleGoogleLogin(env: Env): Response {
-  // Para MVP, vamos retornar um erro informando que OAuth está em desenvolvimento
-  return new Response(JSON.stringify({ 
-    error: 'OAuth em desenvolvimento',
-    message: 'Google OAuth será implementado em breve. Use o Modo Demo por enquanto.',
-    status: 'development'
-  }), { 
-    status: 501,
-    headers: { 'Content-Type': 'application/json' }
-  });
+  const googleAuthUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+  googleAuthUrl.searchParams.set('client_id', env.GOOGLE_CLIENT_ID);
+  googleAuthUrl.searchParams.set('redirect_uri', `${getBaseUrl(env)}/auth/google/callback`);
+  googleAuthUrl.searchParams.set('response_type', 'code');
+  googleAuthUrl.searchParams.set('scope', 'openid profile email');
+  googleAuthUrl.searchParams.set('state', crypto.randomUUID());
+
+  return Response.redirect(googleAuthUrl.toString(), 302);
 }
 
 async function handleGoogleCallback(request: Request, env: Env): Promise<Response> {
-  // Para MVP, vamos retornar um erro informando que OAuth está em desenvolvimento
-  return new Response(JSON.stringify({ 
-    error: 'OAuth em desenvolvimento',
-    message: 'Google OAuth será implementado em breve. Use o Modo Demo por enquanto.',
-    status: 'development'
-  }), { 
-    status: 501,
-    headers: { 'Content-Type': 'application/json' }
-  });
+  const url = new URL(request.url);
+  const code = url.searchParams.get('code');
+
+  if (!code) {
+    return new Response('Authorization code not found', { status: 400 });
+  }
+
+  try {
+    // Exchange code for access token
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        client_id: env.GOOGLE_CLIENT_ID,
+        client_secret: env.GOOGLE_CLIENT_SECRET,
+        code,
+        grant_type: 'authorization_code',
+        redirect_uri: `${getBaseUrl(env)}/auth/google/callback`,
+      }),
+    });
+
+    const tokenData = await tokenResponse.json() as { access_token: string };
+    
+    if (!tokenData.access_token) {
+      throw new Error('Failed to get access token');
+    }
+
+    // Get user info
+    const userResponse = await fetch(`https://www.googleapis.com/oauth2/v2/userinfo?access_token=${tokenData.access_token}`);
+    const googleUser = await userResponse.json() as GoogleUser;
+
+    // Create or update user
+    const user = await createOrUpdateUser(env, {
+      provider: 'google',
+      provider_id: googleUser.id,
+      email: googleUser.email,
+      name: googleUser.name,
+      avatar_url: googleUser.picture,
+    });
+
+    // Create JWT
+    const jwt = await createJWT(user, env);
+
+    // Redirect to frontend with token
+    const frontendUrl = new URL(env.FRONTEND_URL || 'http://localhost:3000');
+    frontendUrl.searchParams.set('token', jwt);
+    
+    return Response.redirect(frontendUrl.toString(), 302);
+
+  } catch (error) {
+    console.error('Google OAuth error:', error);
+    return new Response('Authentication failed', { status: 500 });
+  }
 }
 
 function handleLogout(): Response {
@@ -141,7 +257,6 @@ function handleLogout(): Response {
   });
 }
 
-// Funções auxiliares simplificadas para MVP
 async function createOrUpdateUser(env: Env, userData: {
   provider: 'github' | 'google';
   provider_id: string;
@@ -149,21 +264,82 @@ async function createOrUpdateUser(env: Env, userData: {
   name: string;
   avatar_url: string;
 }): Promise<User> {
-  // Para MVP, retornar usuário mock
-  return {
-    id: `${userData.provider}:${userData.provider_id}`,
-    email: userData.email,
-    name: userData.name,
-    avatar_url: userData.avatar_url,
-    provider: userData.provider,
-    provider_id: userData.provider_id,
-    created_at: new Date().toISOString(),
-  };
+  const userId = `${userData.provider}:${userData.provider_id}`;
+  const now = new Date().toISOString();
+
+  try {
+    // Try to update existing user first
+    const existingUser = await env.DB.prepare(`
+      SELECT * FROM users WHERE id = ?
+    `).bind(userId).first();
+
+    if (existingUser) {
+      // Update existing user
+      await env.DB.prepare(`
+        UPDATE users SET email = ?, name = ?, avatar_url = ? WHERE id = ?
+      `).bind(userData.email, userData.name, userData.avatar_url, userId).run();
+    } else {
+      // Create new user
+      await env.DB.prepare(`
+        INSERT INTO users (id, email, name, avatar_url, provider, provider_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        userId,
+        userData.email,
+        userData.name,
+        userData.avatar_url,
+        userData.provider,
+        userData.provider_id,
+        now
+      ).run();
+    }
+
+    return {
+      id: userId,
+      email: userData.email,
+      name: userData.name,
+      avatar_url: userData.avatar_url,
+      provider: userData.provider,
+      provider_id: userData.provider_id,
+      created_at: existingUser?.created_at || now,
+    };
+  } catch (error) {
+    console.error('Database error:', error);
+    // Fallback: return user data without database persistence
+    return {
+      id: userId,
+      email: userData.email,
+      name: userData.name,
+      avatar_url: userData.avatar_url,
+      provider: userData.provider,
+      provider_id: userData.provider_id,
+      created_at: now,
+    };
+  }
 }
 
 async function createJWT(user: User, env: Env): Promise<string> {
-  // Para MVP, retornar token mock
-  return `mock-jwt-token-${user.id}-${Date.now()}`;
+  // Para MVP, vamos usar uma abordagem simplificada
+  // Em produção, usar uma biblioteca JWT compatível com Workers
+  
+  const payload = {
+    sub: user.id,
+    email: user.email,
+    name: user.name,
+    avatar_url: user.avatar_url,
+    provider: user.provider,
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60), // 7 days
+  };
+
+  // Encode payload as base64
+  const payloadStr = JSON.stringify(payload);
+  const payloadB64 = btoa(payloadStr);
+  
+  // Create a simple token (not cryptographically secure for MVP)
+  const token = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${payloadB64}.${env.JWT_SECRET || 'demo-secret'}`;
+  
+  return token;
 }
 
 function getBaseUrl(env: Env): string {
