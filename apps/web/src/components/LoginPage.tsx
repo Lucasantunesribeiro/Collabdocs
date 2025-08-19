@@ -12,52 +12,42 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
   const handleGitHubLogin = async () => {
     setIsLoading(true);
-    setError(null);
+    setError('');
     
     try {
-      // Buscar a URL de OAuth do GitHub
-      const response = await fetch('https://collab-docs.collabdocs.workers.dev/auth/github');
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/github`);
+      const data = await response.json();
       
-      if (response.ok) {
-        const data = await response.json();
-        
-        if (data.success && data.auth_url) {
-          // Redirecionar para GitHub OAuth
-          window.location.href = data.auth_url;
-        } else {
-          setError('Erro ao obter URL de autenticação do GitHub');
-        }
+      if (data.success && data.auth_url) {
+        // Redirecionar automaticamente para a URL OAuth
+        window.location.href = data.auth_url;
       } else {
-        setError('Erro ao conectar com o servidor de autenticação');
+        setError('Erro ao obter URL de autenticação');
       }
-    } catch (err) {
+    } catch (error) {
+      console.error('Erro no login GitHub:', error);
       setError('Erro de conexão com o servidor');
     } finally {
       setIsLoading(false);
     }
   };
-
+  
   const handleGoogleLogin = async () => {
     setIsLoading(true);
-    setError(null);
+    setError('');
     
     try {
-      // Buscar a URL de OAuth do Google
-      const response = await fetch('https://collab-docs.collabdocs.workers.dev/auth/google');
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/google`);
+      const data = await response.json();
       
-      if (response.ok) {
-        const data = await response.json();
-        
-        if (data.success && data.auth_url) {
-          // Redirecionar para Google OAuth
-          window.location.href = data.auth_url;
-        } else {
-          setError('Erro ao obter URL de autenticação do Google');
-        }
+      if (data.success && data.auth_url) {
+        // Redirecionar automaticamente para a URL OAuth
+        window.location.href = data.auth_url;
       } else {
-        setError('Erro ao conectar com o servidor de autenticação');
+        setError('Erro ao obter URL de autenticação');
       }
-    } catch (err) {
+    } catch (error) {
+      console.error('Erro no login Google:', error);
       setError('Erro de conexão com o servidor');
     } finally {
       setIsLoading(false);
