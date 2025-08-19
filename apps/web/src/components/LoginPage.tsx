@@ -15,10 +15,24 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     setError(null);
     
     try {
-      // Redirecionar para GitHub OAuth
-      window.location.href = 'https://collab-docs.collabdocs.workers.dev/auth/github';
+      // Buscar a URL de OAuth do GitHub
+      const response = await fetch('https://collab-docs.collabdocs.workers.dev/auth/github');
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (data.success && data.auth_url) {
+          // Redirecionar para GitHub OAuth
+          window.location.href = data.auth_url;
+        } else {
+          setError('Erro ao obter URL de autenticação do GitHub');
+        }
+      } else {
+        setError('Erro ao conectar com o servidor de autenticação');
+      }
     } catch (err) {
-      setError('Erro ao conectar com GitHub');
+      setError('Erro de conexão com o servidor');
+    } finally {
       setIsLoading(false);
     }
   };
@@ -28,10 +42,24 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     setError(null);
     
     try {
-      // Redirecionar para Google OAuth
-      window.location.href = 'https://collab-docs.collabdocs.workers.dev/auth/google';
+      // Buscar a URL de OAuth do Google
+      const response = await fetch('https://collab-docs.collabdocs.workers.dev/auth/google');
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (data.success && data.auth_url) {
+          // Redirecionar para Google OAuth
+          window.location.href = data.auth_url;
+        } else {
+          setError('Erro ao obter URL de autenticação do Google');
+        }
+      } else {
+        setError('Erro ao conectar com o servidor de autenticação');
+      }
     } catch (err) {
-      setError('Erro ao conectar com Google');
+      setError('Erro de conexão com o servidor');
+    } finally {
       setIsLoading(false);
     }
   };

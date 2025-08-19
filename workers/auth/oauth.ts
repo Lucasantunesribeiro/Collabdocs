@@ -16,7 +16,7 @@ interface GoogleUser {
   picture: string;
 }
 
-export async function handleAuth(request: Request, env: Env): Promise<Response> {
+export async function handleAuth(request: Request, env: any): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname.replace('/auth', '');
 
@@ -29,8 +29,7 @@ export async function handleAuth(request: Request, env: Env): Promise<Response> 
       endpoints: [
         'GET /auth/github - Login com GitHub',
         'GET /auth/google - Login com Google',
-        'GET /auth/logout - Logout',
-        'GET /auth/oauth - Este endpoint (info)'
+        'GET /auth/logout - Logout'
       ]
     }), { 
       status: 200,
@@ -57,25 +56,6 @@ export async function handleAuth(request: Request, env: Env): Promise<Response> 
   if (path === '/logout') {
     return handleLogout();
   }
-  
-  // Endpoint específico para /auth/oauth
-  if (path === '/oauth') {
-    return new Response(JSON.stringify({ 
-      message: 'CollabDocs OAuth Service',
-      version: '1.0.0',
-      status: 'running',
-      endpoints: [
-        'GET /auth/github - Login com GitHub',
-        'GET /auth/google - Login com Google',
-        'GET /auth/logout - Logout',
-        'GET /auth/oauth - Este endpoint (info)'
-      ],
-      note: 'Este é o endpoint específico para /auth/oauth'
-    }), { 
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
-  }
 
   return new Response(JSON.stringify({ error: 'Auth endpoint not found' }), { 
     status: 404,
@@ -83,26 +63,45 @@ export async function handleAuth(request: Request, env: Env): Promise<Response> 
   });
 }
 
-function handleGitHubLogin(env: Env): Response {
-  const githubAuthUrl = new URL('https://github.com/login/oauth/authorize');
-  githubAuthUrl.searchParams.set('client_id', env.GITHUB_CLIENT_ID);
-  githubAuthUrl.searchParams.set('scope', 'user:email');
-  githubAuthUrl.searchParams.set('redirect_uri', `${getBaseUrl(env)}/auth/github/callback`);
-  githubAuthUrl.searchParams.set('state', crypto.randomUUID());
+function handleGitHubLogin(env: any): Response {
+  try {
+    const githubAuthUrl = new URL('https://github.com/login/oauth/authorize');
+    githubAuthUrl.searchParams.set('client_id', env.GITHUB_CLIENT_ID || '');
+    githubAuthUrl.searchParams.set('scope', 'user:email');
+    githubAuthUrl.searchParams.set('redirect_uri', 'https://collab-docs.collabdocs.workers.dev/auth/github/callback');
+    githubAuthUrl.searchParams.set('state', 'demo-state');
 
-  return Response.redirect(githubAuthUrl.toString(), 302);
+    // Em vez de redirect, retornar a URL para o frontend
+    return new Response(JSON.stringify({ 
+      success: true,
+      auth_url: githubAuthUrl.toString(),
+      message: 'GitHub OAuth URL criada com sucesso'
+    }), { 
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    console.error('GitHub login error:', error);
+    return new Response(JSON.stringify({ 
+      error: 'Failed to create GitHub OAuth URL',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }), { 
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
 }
 
-async function handleGitHubCallback(request: Request, env: Env): Promise<Response> {
-  const url = new URL(request.url);
-  const code = url.searchParams.get('code');
-  const state = url.searchParams.get('state');
-
-  if (!code) {
-    return new Response('Authorization code not found', { status: 400 });
-  }
-
+async function handleGitHubCallback(request: Request, env: any): Promise<Response> {
   try {
+    const url = new URL(request.url);
+    const code = url.searchParams.get('code');
+    const state = url.searchParams.get('state');
+
+    if (!code) {
+      return new Response('Authorization code not found', { status: 400 });
+    }
+
     // Exchange code for access token
     const tokenResponse = await fetch('https://github.com/login/oauth/access_token', {
       method: 'POST',
@@ -111,8 +110,8 @@ async function handleGitHubCallback(request: Request, env: Env): Promise<Respons
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        client_id: env.GITHUB_CLIENT_ID,
-        client_secret: env.GITHUB_CLIENT_SECRET,
+        client_id: env.GITHUB_CLIENT_ID || '',
+        client_secret: env.GITHUB_CLIENT_SECRET || '',
         code,
       }),
     });
@@ -132,7 +131,7 @@ async function handleGitHubCallback(request: Request, env: Env): Promise<Respons
       },
     });
 
-    const githubUser = await userResponse.json() as GitHubUser;
+    const githubUser = await userResponse.json() as any;
 
     // Get primary email if not public
     let email = githubUser.email;
@@ -154,50 +153,90 @@ async function handleGitHubCallback(request: Request, env: Env): Promise<Respons
       throw new Error('No email found for GitHub user');
     }
 
-    // Create or update user
-    const user = await createOrUpdateUser(env, {
-      provider: 'github',
-      provider_id: githubUser.id.toString(),
+    // Create user data
+    const user = {
+      id: `github:${githubUser.id}`,
       email,
       name: githubUser.name || githubUser.login,
       avatar_url: githubUser.avatar_url,
-    });
+      provider: 'github',
+      provider_id: githubUser.id.toString(),
+      created_at: new Date().toISOString(),
+    };
 
-    // Create JWT
-    const jwt = await createJWT(user, env);
+    // Create simple JWT
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      name: user.name,
+      avatar_url: user.avatar_url,
+      provider: user.provider,
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60), // 7 days
+    };
+
+    const payloadStr = JSON.stringify(payload);
+    const payloadB64 = btoa(payloadStr);
+    const jwt = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${payloadB64}.${env.JWT_SECRET || 'demo-secret'}`;
 
     // Redirect to frontend with token
     const frontendUrl = new URL(env.FRONTEND_URL || 'http://localhost:3000');
     frontendUrl.searchParams.set('token', jwt);
+    frontendUrl.searchParams.set('user', JSON.stringify(user));
     
     return Response.redirect(frontendUrl.toString(), 302);
 
   } catch (error) {
     console.error('GitHub OAuth error:', error);
-    return new Response('Authentication failed', { status: 500 });
+    return new Response(JSON.stringify({ 
+      error: 'Authentication failed',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }), { 
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 }
 
-function handleGoogleLogin(env: Env): Response {
-  const googleAuthUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-  googleAuthUrl.searchParams.set('client_id', env.GOOGLE_CLIENT_ID);
-  googleAuthUrl.searchParams.set('redirect_uri', `${getBaseUrl(env)}/auth/google/callback`);
-  googleAuthUrl.searchParams.set('response_type', 'code');
-  googleAuthUrl.searchParams.set('scope', 'openid profile email');
-  googleAuthUrl.searchParams.set('state', crypto.randomUUID());
-
-  return Response.redirect(googleAuthUrl.toString(), 302);
-}
-
-async function handleGoogleCallback(request: Request, env: Env): Promise<Response> {
-  const url = new URL(request.url);
-  const code = url.searchParams.get('code');
-
-  if (!code) {
-    return new Response('Authorization code not found', { status: 400 });
-  }
-
+function handleGoogleLogin(env: any): Response {
   try {
+    const googleAuthUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+    googleAuthUrl.searchParams.set('client_id', env.GOOGLE_CLIENT_ID || '');
+    googleAuthUrl.searchParams.set('redirect_uri', 'https://collab-docs.collabdocs.workers.dev/auth/google/callback');
+    googleAuthUrl.searchParams.set('response_type', 'code');
+    googleAuthUrl.searchParams.set('scope', 'openid profile email');
+    googleAuthUrl.searchParams.set('state', 'demo-state');
+
+    // Em vez de redirect, retornar a URL para o frontend
+    return new Response(JSON.stringify({ 
+      success: true,
+      auth_url: googleAuthUrl.toString(),
+      message: 'Google OAuth URL criada com sucesso'
+    }), { 
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    console.error('Google login error:', error);
+    return new Response(JSON.stringify({ 
+      error: 'Failed to create Google OAuth URL',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }), { 
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+async function handleGoogleCallback(request: Request, env: any): Promise<Response> {
+  try {
+    const url = new URL(request.url);
+    const code = url.searchParams.get('code');
+
+    if (!code) {
+      return new Response('Authorization code not found', { status: 400 });
+    }
+
     // Exchange code for access token
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
@@ -205,11 +244,11 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({
-        client_id: env.GOOGLE_CLIENT_ID,
-        client_secret: env.GOOGLE_CLIENT_SECRET,
+        client_id: env.GOOGLE_CLIENT_ID || '',
+        client_secret: env.GOOGLE_CLIENT_SECRET || '',
         code,
         grant_type: 'authorization_code',
-        redirect_uri: `${getBaseUrl(env)}/auth/google/callback`,
+        redirect_uri: 'https://collab-docs.collabdocs.workers.dev/auth/google/callback',
       }),
     });
 
@@ -221,127 +260,56 @@ async function handleGoogleCallback(request: Request, env: Env): Promise<Respons
 
     // Get user info
     const userResponse = await fetch(`https://www.googleapis.com/oauth2/v2/userinfo?access_token=${tokenData.access_token}`);
-    const googleUser = await userResponse.json() as GoogleUser;
+    const googleUser = await userResponse.json() as any;
 
-    // Create or update user
-    const user = await createOrUpdateUser(env, {
-      provider: 'google',
-      provider_id: googleUser.id,
+    // Create user data
+    const user = {
+      id: `google:${googleUser.id}`,
       email: googleUser.email,
       name: googleUser.name,
       avatar_url: googleUser.picture,
-    });
+      provider: 'google',
+      provider_id: googleUser.id,
+      created_at: new Date().toISOString(),
+    };
 
-    // Create JWT
-    const jwt = await createJWT(user, env);
+    // Create simple JWT
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      name: user.name,
+      avatar_url: user.avatar_url,
+      provider: user.provider,
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60), // 7 days
+    };
+
+    const payloadStr = JSON.stringify(payload);
+    const payloadB64 = btoa(payloadStr);
+    const jwt = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${payloadB64}.${env.JWT_SECRET || 'demo-secret'}`;
 
     // Redirect to frontend with token
     const frontendUrl = new URL(env.FRONTEND_URL || 'http://localhost:3000');
     frontendUrl.searchParams.set('token', jwt);
+    frontendUrl.searchParams.set('user', JSON.stringify(user));
     
     return Response.redirect(frontendUrl.toString(), 302);
 
   } catch (error) {
     console.error('Google OAuth error:', error);
-    return new Response('Authentication failed', { status: 500 });
+    return new Response(JSON.stringify({ 
+      error: 'Authentication failed',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }), { 
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 }
 
 function handleLogout(): Response {
   return new Response(JSON.stringify({ message: 'Logged out' }), {
     status: 200,
-    headers: {
-      'Content-Type': 'application/json',
-      'Set-Cookie': 'token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; Secure; SameSite=Strict',
-    },
+    headers: { 'Content-Type': 'application/json' }
   });
-}
-
-async function createOrUpdateUser(env: Env, userData: {
-  provider: 'github' | 'google';
-  provider_id: string;
-  email: string;
-  name: string;
-  avatar_url: string;
-}): Promise<User> {
-  const userId = `${userData.provider}:${userData.provider_id}`;
-  const now = new Date().toISOString();
-
-  try {
-    // Try to update existing user first
-    const existingUser = await env.DB.prepare(`
-      SELECT * FROM users WHERE id = ?
-    `).bind(userId).first();
-
-    if (existingUser) {
-      // Update existing user
-      await env.DB.prepare(`
-        UPDATE users SET email = ?, name = ?, avatar_url = ? WHERE id = ?
-      `).bind(userData.email, userData.name, userData.avatar_url, userId).run();
-    } else {
-      // Create new user
-      await env.DB.prepare(`
-        INSERT INTO users (id, email, name, avatar_url, provider, provider_id, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).bind(
-        userId,
-        userData.email,
-        userData.name,
-        userData.avatar_url,
-        userData.provider,
-        userData.provider_id,
-        now
-      ).run();
-    }
-
-    return {
-      id: userId,
-      email: userData.email,
-      name: userData.name,
-      avatar_url: userData.avatar_url,
-      provider: userData.provider,
-      provider_id: userData.provider_id,
-      created_at: existingUser?.created_at || now,
-    };
-  } catch (error) {
-    console.error('Database error:', error);
-    // Fallback: return user data without database persistence
-    return {
-      id: userId,
-      email: userData.email,
-      name: userData.name,
-      avatar_url: userData.avatar_url,
-      provider: userData.provider,
-      provider_id: userData.provider_id,
-      created_at: now,
-    };
-  }
-}
-
-async function createJWT(user: User, env: Env): Promise<string> {
-  // Para MVP, vamos usar uma abordagem simplificada
-  // Em produção, usar uma biblioteca JWT compatível com Workers
-  
-  const payload = {
-    sub: user.id,
-    email: user.email,
-    name: user.name,
-    avatar_url: user.avatar_url,
-    provider: user.provider,
-    iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60), // 7 days
-  };
-
-  // Encode payload as base64
-  const payloadStr = JSON.stringify(payload);
-  const payloadB64 = btoa(payloadStr);
-  
-  // Create a simple token (not cryptographically secure for MVP)
-  const token = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${payloadB64}.${env.JWT_SECRET || 'demo-secret'}`;
-  
-  return token;
-}
-
-function getBaseUrl(env: Env): string {
-  return env.FRONTEND_URL?.replace(/\/+$/, '') || 'https://collab-docs.collabdocs.workers.dev';
 }
