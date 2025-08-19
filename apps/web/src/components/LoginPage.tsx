@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { signIn, useSession } from 'next-auth/react';
+import { useState, useEffect } from 'react';
+import { useAuth } from '@/context/AuthContext';
 
 interface LoginPageProps {
   onLogin?: (user: any) => void;
@@ -10,17 +10,48 @@ interface LoginPageProps {
 export function LoginPage({ onLogin }: LoginPageProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { data: session } = useSession();
+  const { user, login } = useAuth();
+
+  // Verificar se há dados de usuário na URL (OAuth callback)
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const userParam = urlParams.get('user');
+    const errorParam = urlParams.get('error');
+    
+    if (errorParam) {
+      setError(`Erro na autenticação: ${errorParam}`);
+      // Limpar a URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
+    
+    if (userParam) {
+      try {
+        const userData = JSON.parse(decodeURIComponent(userParam));
+        // Simular um token JWT
+        const token = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI${userData.id}IiwibmFtZSI6Ii${userData.name}IiwiZW1haWwiOiIi${userData.email}IiwiYXZhdGFyX3VybCI6Ii${userData.avatar_url || ''}IiwicHJvdmlkZXIiOiIi${userData.provider}IiwiZXhwIjoxNzM0NzI5NjAwLCJpYXQiOjE3MzQ3MjYwMDB9.signature`;
+        
+        login(token);
+        
+        // Limpar a URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+        
+        // Redirecionar para a página principal
+        window.location.href = '/';
+      } catch (error) {
+        console.error('Error parsing user data:', error);
+        setError('Erro ao processar dados do usuário');
+      }
+    }
+  }, [login]);
 
   const handleGitHubLogin = async () => {
     setIsLoading(true);
     setError('');
     
     try {
-      await signIn('github', { 
-        callbackUrl: '/',
-        redirect: false 
-      });
+      // Redirecionar para a rota de autenticação GitHub
+      window.location.href = '/api/auth/[...nextauth]?provider=github';
     } catch (error) {
       console.error('Erro no login GitHub:', error);
       setError('Erro ao fazer login com GitHub');
@@ -34,10 +65,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     setError('');
     
     try {
-      await signIn('google', { 
-        callbackUrl: '/',
-        redirect: false 
-      });
+      // Redirecionar para a rota de autenticação Google
+      window.location.href = '/api/auth/[...nextauth]?provider=google';
     } catch (error) {
       console.error('Erro no login Google:', error);
       setError('Erro ao fazer login com Google');
@@ -69,7 +98,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   };
 
   // Se já estiver logado, mostrar mensagem
-  if (session) {
+  if (user) {
     return (
       <div className="bg-white/90 backdrop-blur-md rounded-3xl shadow-2xl border border-white/20 p-8 animate-slide-up">
         <div className="text-center">
@@ -80,7 +109,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             Já está logado!
           </h2>
           <p className="text-gray-600 text-lg mb-4">
-            Bem-vindo, {session.user.name}!
+            Bem-vindo, {user.name}!
           </p>
           <button
             onClick={() => window.location.href = '/'}
@@ -185,7 +214,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         <div className="flex items-center justify-center gap-6 text-xs text-gray-500">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-            <span>Auth.js Ativo</span>
+            <span>OAuth Ativo</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>

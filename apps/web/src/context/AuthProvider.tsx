@@ -1,6 +1,5 @@
 'use client';
 
-import { SessionProvider } from 'next-auth/react';
 import { AuthProvider as CustomAuthProvider } from './AuthContext';
 
 interface AuthProviderProps {
@@ -9,10 +8,8 @@ interface AuthProviderProps {
 
 export function AuthProvider({ children }: AuthProviderProps) {
   return (
-    <SessionProvider>
-      <CustomAuthProvider>
-        {children}
-      </CustomAuthProvider>
-    </SessionProvider>
+    <CustomAuthProvider>
+      {children}
+    </CustomAuthProvider>
   );
 }

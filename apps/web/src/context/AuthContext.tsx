@@ -1,7 +1,6 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { useSession, signOut } from 'next-auth/react';
 import { User, JWTPayload } from '@collab-docs/shared';
 
 interface AuthContextType {
@@ -27,50 +26,29 @@ interface AuthProviderProps {
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
-  const { data: session, status } = useSession();
   const [user, setUser] = useState<JWTPayload | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Se temos uma sessão do NextAuth, usar ela
-    if (session && session.user) {
-      const nextAuthUser: JWTPayload = {
-        sub: session.user.id,
-        email: session.user.email,
-        name: session.user.name || 'Usuário',
-        avatar_url: session.user.image || undefined,
-        provider: session.user.provider || 'github',
-        exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60), // 24 horas
-        iat: Math.floor(Date.now() / 1000),
-      };
-      
-      setUser(nextAuthUser);
-      setToken(session.accessToken || 'nextauth-token');
-      setIsLoading(false);
-      return;
-    }
-
-    // Se não há sessão, verificar localStorage (modo demo)
-    if (status === 'unauthenticated') {
-      const savedToken = localStorage.getItem('collabdocs_token');
-      if (savedToken) {
-        try {
-          const payload = parseJWT(savedToken);
-          if (payload && payload.exp > Date.now() / 1000) {
-            setUser(payload);
-            setToken(savedToken);
-          } else {
-            localStorage.removeItem('collabdocs_token');
-          }
-        } catch (error) {
-          console.error('Error parsing saved token:', error);
+    // Verificar localStorage (modo demo ou usuário logado)
+    const savedToken = localStorage.getItem('collabdocs_token');
+    if (savedToken) {
+      try {
+        const payload = parseJWT(savedToken);
+        if (payload && payload.exp > Date.now() / 1000) {
+          setUser(payload);
+          setToken(savedToken);
+        } else {
           localStorage.removeItem('collabdocs_token');
         }
+      } catch (error) {
+        console.error('Error parsing saved token:', error);
+        localStorage.removeItem('collabdocs_token');
       }
-      setIsLoading(false);
     }
-  }, [session, status]);
+    setIsLoading(false);
+  }, []);
 
   const parseJWT = (token: string): JWTPayload | null => {
     try {
@@ -100,15 +78,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   };
 
-  const logout = async () => {
+  const logout = () => {
     setUser(null);
     setToken(null);
     localStorage.removeItem('collabdocs_token');
-    
-    // Se estiver usando NextAuth, fazer logout também
-    if (session) {
-      await signOut({ redirect: false });
-    }
   };
 
   const value: AuthContextType = {
@@ -116,7 +89,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     token,
     login,
     logout,
-    isLoading: isLoading || status === 'loading',
+    isLoading,
   };
 
   return (
