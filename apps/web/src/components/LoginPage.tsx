@@ -28,8 +28,26 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     if (userParam) {
       try {
         const userData = JSON.parse(decodeURIComponent(userParam));
-        // Simular um token JWT
-        const token = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI${userData.id}IiwibmFtZSI6Ii${userData.name}IiwiZW1haWwiOiIi${userData.email}IiwiYXZhdGFyX3VybCI6Ii${userData.avatar_url || ''}IiwicHJvdmlkZXIiOiIi${userData.provider}IiwiZXhwIjoxNzM0NzI5NjAwLCJpYXQiOjE3MzQ3MjYwMDB9.signature`;
+        console.log('Dados OAuth recebidos:', userData);
+        
+        // Mapear dados OAuth para o formato JWTPayload
+        const jwtPayload = {
+          sub: userData.id,
+          email: userData.email || 'no-email@example.com',
+          name: userData.name,
+          avatar_url: userData.avatar_url,
+          provider: userData.provider,
+          iat: Math.floor(Date.now() / 1000),
+          exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60), // 24 horas
+        };
+        
+        // Simular um token JWT com os dados corretos
+        const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+        const payload = btoa(JSON.stringify(jwtPayload));
+        const token = `${header}.${payload}.signature`;
+        
+        console.log('Token JWT gerado:', token);
+        console.log('Payload JWT:', jwtPayload);
         
         login(token);
         
