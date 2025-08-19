@@ -1,5 +1,20 @@
 // API service for CollabDocs
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://collab-docs.collabdocs.workers.dev/api';
+const getApiBaseUrl = () => {
+  // Se estiver rodando na Vercel (produção)
+  if (typeof window !== 'undefined' && window.location.hostname.includes('vercel.app')) {
+    return 'https://collab-docs.collabdocs.workers.dev/api';
+  }
+  
+  // Se estiver rodando localmente
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    return 'http://localhost:8787/api';
+  }
+  
+  // Fallback para produção
+  return process.env.NEXT_PUBLIC_API_URL || 'https://collab-docs.collabdocs.workers.dev/api';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 export interface Document {
   id: string;
