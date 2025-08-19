@@ -16,28 +16,36 @@ export function CreateDocumentModal({ onClose, onCreate }: CreateDocumentModalPr
     e.preventDefault();
     
     if (!title.trim()) {
+      alert('Por favor, insira um título para o documento');
       return;
     }
 
     setIsSubmitting(true);
     try {
       await onCreate(title.trim(), visibility);
-    } catch (error) {
-      console.error('Error creating document:', error);
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
+  };
+
+  const handleClose = () => {
+    if (!isSubmitting) {
+      onClose();
+    }
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md animate-fade-in">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold text-gray-900">
-            Novo Documento
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+          <h2 className="text-xl font-semibold text-gray-800">
+            ✨ Criar Novo Documento
           </h2>
           <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
+            onClick={handleClose}
+            disabled={isSubmitting}
+            className="text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -45,10 +53,12 @@ export function CreateDocumentModal({ onClose, onCreate }: CreateDocumentModalPr
           </button>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* Título */}
+          <div>
             <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
-              Título
+              Título do Documento
             </label>
             <input
               type="text"
@@ -56,13 +66,14 @@ export function CreateDocumentModal({ onClose, onCreate }: CreateDocumentModalPr
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Digite o título do documento..."
-              className="input w-full"
-              autoFocus
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              required
               disabled={isSubmitting}
             />
           </div>
 
-          <div className="mb-6">
+          {/* Visibilidade */}
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Visibilidade
             </label>
@@ -74,17 +85,13 @@ export function CreateDocumentModal({ onClose, onCreate }: CreateDocumentModalPr
                   value="private"
                   checked={visibility === 'private'}
                   onChange={(e) => setVisibility(e.target.value as 'private' | 'public')}
-                  className="mr-2"
                   disabled={isSubmitting}
+                  className="mr-2 text-blue-600 focus:ring-blue-500"
                 />
-                <div className="flex items-center">
-                  <svg className="w-4 h-4 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                  </svg>
-                  <span className="text-sm">Privado - Somente você pode ver</span>
-                </div>
+                <span className="text-sm text-gray-700">
+                  🔒 Privado - Apenas você pode ver e editar
+                </span>
               </label>
-              
               <label className="flex items-center">
                 <input
                   type="radio"
@@ -92,34 +99,41 @@ export function CreateDocumentModal({ onClose, onCreate }: CreateDocumentModalPr
                   value="public"
                   checked={visibility === 'public'}
                   onChange={(e) => setVisibility(e.target.value as 'private' | 'public')}
-                  className="mr-2"
                   disabled={isSubmitting}
+                  className="mr-2 text-blue-600 focus:ring-blue-500"
                 />
-                <div className="flex items-center">
-                  <svg className="w-4 h-4 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064" />
-                  </svg>
-                  <span className="text-sm">Público - Qualquer pessoa com o link pode ver</span>
-                </div>
+                <span className="text-sm text-gray-700">
+                  🌐 Público - Qualquer pessoa pode ver
+                </span>
               </label>
             </div>
           </div>
 
-          <div className="flex justify-end gap-3">
+          {/* Botões */}
+          <div className="flex gap-3 pt-4">
             <button
               type="button"
-              onClick={onClose}
-              className="btn btn-secondary"
+              onClick={handleClose}
               disabled={isSubmitting}
+              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="btn btn-primary"
-              disabled={!title.trim() || isSubmitting}
+              disabled={isSubmitting || !title.trim()}
+              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              {isSubmitting ? 'Criando...' : 'Criar Documento'}
+              {isSubmitting ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  Criando...
+                </>
+              ) : (
+                <>
+                  ✨ Criar Documento
+                </>
+              )}
             </button>
           </div>
         </form>

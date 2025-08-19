@@ -1,73 +1,129 @@
 'use client';
 
-import { Document } from '@collab-docs/shared';
+import { useState } from 'react';
+
+interface Document {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  visibility: 'private' | 'public';
+  owner_id: string;
+}
 
 interface DocumentCardProps {
   document: Document;
-  onRefresh: () => void;
+  onDelete: (documentId: string) => void;
+  formatTimeAgo: (dateString: string) => string;
 }
 
-export function DocumentCard({ document, onRefresh }: DocumentCardProps) {
-  const handleClick = () => {
+export function DocumentCard({ document, onDelete, formatTimeAgo }: DocumentCardProps) {
+  const [showActions, setShowActions] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleOpen = () => {
+    // Redirecionar para o editor do documento
     window.location.href = `/document/${document.id}`;
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
+  const handleEdit = () => {
+    // Por enquanto, redirecionar para o editor
+    // No futuro, pode abrir um modal de edição
+    window.location.href = `/document/${document.id}`;
   };
 
-  const getVisibilityIcon = (visibility: string) => {
-    if (visibility === 'public') {
-      return (
-        <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064" />
-        </svg>
-      );
+  const handleDelete = async () => {
+    if (confirm(`Tem certeza que deseja deletar "${document.title}"?`)) {
+      setIsDeleting(true);
+      try {
+        await onDelete(document.id);
+      } finally {
+        setIsDeleting(false);
+      }
     }
-    return (
-      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-      </svg>
-    );
+  };
+
+  const getVisibilityIcon = () => {
+    return document.visibility === 'private' ? '🔒' : '🌐';
+  };
+
+  const getVisibilityText = () => {
+    return document.visibility === 'private' ? 'Privado' : 'Público';
+  };
+
+  const getCardColor = () => {
+    const colors = {
+      private: 'bg-blue-50 border-blue-200',
+      public: 'bg-green-50 border-green-200'
+    };
+    return colors[document.visibility];
+  };
+
+  const getTextColor = () => {
+    const colors = {
+      private: 'text-blue-900',
+      public: 'text-green-900'
+    };
+    return colors[document.visibility];
   };
 
   return (
-    <div
-      onClick={handleClick}
-      className="card p-6 hover:shadow-md transition-shadow cursor-pointer group"
-    >
-      <div className="flex items-start justify-between mb-3">
-        <h3 className="text-lg font-medium text-gray-900 group-hover:text-primary-600 transition-colors line-clamp-2">
-          {document.title}
-        </h3>
-        <div className="flex items-center gap-2 ml-2">
-          {getVisibilityIcon(document.visibility)}
+    <div className={`${getCardColor()} border rounded-lg p-4 transition-all hover:shadow-md`}>
+      <div className="flex items-center justify-between">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-2">
+            <h4 className={`font-medium ${getTextColor()}`}>
+              {document.title}
+            </h4>
+            <span className="text-sm opacity-75">
+              {getVisibilityIcon()} {getVisibilityText()}
+            </span>
+          </div>
+          <p className={`text-sm ${getTextColor()} opacity-75`}>
+            Criado {formatTimeAgo(document.created_at)}
+          </p>
+          <p className={`text-sm ${getTextColor()} opacity-75`}>
+            Atualizado {formatTimeAgo(document.updated_at)}
+          </p>
         </div>
-      </div>
-      
-      <div className="flex items-center justify-between text-sm text-gray-500">
-        <span>
-          Atualizado em {formatDate(document.updated_at)}
-        </span>
-        <span className="capitalize">
-          {document.visibility}
-        </span>
-      </div>
-
-      {/* Progress indicator */}
-      <div className="mt-4 pt-4 border-t border-gray-100">
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-gray-400">
-            Criado em {formatDate(document.created_at)}
-          </span>
-          <svg className="w-4 h-4 text-gray-400 group-hover:text-primary-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
+        
+        <div className="flex items-center gap-2 ml-4">
+          <button
+            onClick={handleOpen}
+            className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm transition-colors"
+          >
+            Abrir
+          </button>
+          
+          <div className="relative">
+            <button
+              onClick={() => setShowActions(!showActions)}
+              className="text-gray-500 hover:text-gray-700 p-1 rounded transition-colors"
+              aria-label="Mais ações"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+              </svg>
+            </button>
+            
+            {showActions && (
+              <div className="absolute right-0 top-full mt-1 w-32 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
+                <button
+                  onClick={handleEdit}
+                  className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-t-lg transition-colors"
+                >
+                  ✏️ Editar
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={isDeleting}
+                  className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-b-lg transition-colors disabled:opacity-50"
+                >
+                  {isDeleting ? '🗑️ Deletando...' : '🗑️ Deletar'}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
