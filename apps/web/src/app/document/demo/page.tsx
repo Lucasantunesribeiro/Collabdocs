@@ -141,7 +141,36 @@ export default function DocumentDemoPage() {
             
             <div className="p-6">
               {isEditing ? (
-                <CollaborativeEditor />
+                <CollaborativeEditor 
+                  documentId="demo-document" 
+                  initialContent="# Documento de Demonstração
+
+## Bem-vindo ao CollabDocs! 🎉
+
+Este é um documento de exemplo para demonstrar as funcionalidades do sistema de documentos colaborativos.
+
+### ✨ Funcionalidades Disponíveis
+
+- **Edição em tempo real** - Veja as alterações instantaneamente
+- **Salvamento automático** - Seu trabalho é preservado automaticamente
+- **Histórico de versões** - Acompanhe todas as mudanças
+- **Colaboração simultânea** - Múltiplos usuários podem editar juntos
+
+### 🚀 Como Usar
+
+1. **Digite** no editor abaixo
+2. **Clique em Salvar** para persistir suas alterações
+3. **Compartilhe** o documento com sua equipe
+4. **Colabore** em tempo real
+
+### 💡 Dicas
+
+- Use **Markdown** para formatação
+- **Salve frequentemente** para não perder trabalho
+- **Comunique-se** com sua equipe durante a edição
+
+*Este documento foi criado para demonstrar as capacidades do CollabDocs. Experimente editar o conteúdo!*"
+                />
               ) : (
                 <div className="text-center py-16">
                   <div className="text-6xl mb-6">📝</div>
