@@ -139,45 +139,79 @@ export function Dashboard({ user }: DashboardProps) {
 
   if (isLoading) {
     return (
-      <div className="text-center py-8">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-        <p className="text-gray-600">Carregando documentos...</p>
+      <div className="text-center py-12 animate-fade-in">
+        <div className="relative">
+          <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
+            <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
+          </div>
+          <div className="absolute inset-0 w-16 h-16 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full animate-ping opacity-20"></div>
+        </div>
+        <h3 className="text-xl font-semibold text-gray-800 mb-2">Carregando documentos...</h3>
+        <p className="text-gray-600">Preparando seu workspace</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 animate-fade-in">
       {/* Header do Dashboard */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold text-gray-800 mb-2">
-            📝 Dashboard
-          </h2>
-          <p className="text-gray-600">
-            Gerencie seus documentos colaborativos
-          </p>
+      <div className="text-center">
+        <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-3xl shadow-2xl mb-6">
+          <span className="text-3xl">📊</span>
         </div>
-        
-        <div className="text-right">
-          <div className="text-2xl font-bold text-blue-600">{documents.length}</div>
-          <div className="text-sm text-gray-500">Documentos</div>
-        </div>
+        <h2 className="text-4xl font-bold text-gray-900 mb-4 bg-gradient-to-r from-gray-900 via-blue-800 to-indigo-800 bg-clip-text text-transparent">
+          Dashboard
+        </h2>
+        <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+          Gerencie seus documentos colaborativos e acompanhe as estatísticas
+        </p>
       </div>
 
       {/* Estatísticas */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-white rounded-lg p-4 shadow-sm border">
-          <div className="text-2xl font-bold text-blue-600">{documents.length}</div>
-          <div className="text-sm text-gray-500">Documentos</div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white/80 backdrop-blur-md rounded-3xl p-6 shadow-xl border border-white/20 hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 group">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+              <span className="text-xl">📝</span>
+            </div>
+            <div className="text-right">
+              <div className="text-3xl font-bold text-blue-600">{documents.length}</div>
+              <div className="text-sm text-gray-500">Documentos</div>
+            </div>
+          </div>
+          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+            <div className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-1000" style={{ width: `${Math.min((documents.length / 10) * 100, 100)}%` }}></div>
+          </div>
         </div>
-        <div className="bg-white rounded-lg p-4 shadow-sm border">
-          <div className="text-2xl font-bold text-green-600">12</div>
-          <div className="text-sm text-gray-500">Colaboradores</div>
+        
+        <div className="bg-white/80 backdrop-blur-md rounded-3xl p-6 shadow-xl border border-white/20 hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 group">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-green-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+              <span className="text-xl">👥</span>
+            </div>
+            <div className="text-right">
+              <div className="text-3xl font-bold text-green-600">12</div>
+              <div className="text-sm text-gray-500">Colaboradores</div>
+            </div>
+          </div>
+          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+            <div className="h-full bg-gradient-to-r from-green-500 to-green-600 rounded-full transition-all duration-1000" style={{ width: '60%' }}></div>
+          </div>
         </div>
-        <div className="bg-white rounded-lg p-4 shadow-sm border">
-          <div className="text-2xl font-bold text-purple-600">24h</div>
-          <div className="text-sm text-gray-500">Ativo</div>
+        
+        <div className="bg-white/80 backdrop-blur-md rounded-3xl p-6 shadow-xl border border-white/20 hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 group">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+              <span className="text-xl">⏰</span>
+            </div>
+            <div className="text-right">
+              <div className="text-3xl font-bold text-purple-600">24h</div>
+              <div className="text-sm text-gray-500">Ativo</div>
+            </div>
+          </div>
+          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+            <div className="h-full bg-gradient-to-r from-purple-500 to-purple-600 rounded-full transition-all duration-1000 animate-pulse" style={{ width: '100%' }}></div>
+          </div>
         </div>
       </div>
 
@@ -185,34 +219,46 @@ export function Dashboard({ user }: DashboardProps) {
       <div className="text-center">
         <button
           onClick={() => setShowCreateModal(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg transition-colors flex items-center gap-2 mx-auto"
+          className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-bold py-4 px-8 rounded-3xl transition-all duration-300 shadow-2xl hover:shadow-3xl transform hover:-translate-y-2 flex items-center gap-3 mx-auto group"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
+          <div className="w-6 h-6 bg-white/20 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+          </div>
           ✨ Criar Novo Documento
         </button>
       </div>
 
       {/* Lista de Documentos */}
-      <div className="space-y-4">
-        <h3 className="text-lg font-medium text-gray-800">Documentos Recentes</h3>
+      <div className="space-y-6">
+        <div className="text-center">
+          <h3 className="text-2xl font-bold text-gray-800 mb-2">Documentos Recentes</h3>
+          <p className="text-gray-600">Seus documentos colaborativos em um só lugar</p>
+        </div>
         
         {documents.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
-            <div className="text-4xl mb-4">📝</div>
-            <p>Nenhum documento criado ainda</p>
-            <p className="text-sm">Clique em "Criar Novo Documento" para começar</p>
+          <div className="text-center py-16 bg-white/50 backdrop-blur-sm rounded-3xl border-2 border-dashed border-gray-300 animate-fade-in">
+            <div className="text-6xl mb-4">📝</div>
+            <h4 className="text-xl font-semibold text-gray-800 mb-2">Nenhum documento criado ainda</h4>
+            <p className="text-gray-600 mb-6">Clique em "Criar Novo Documento" para começar sua jornada</p>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-6 py-3 rounded-2xl font-medium hover:shadow-lg transition-all duration-200"
+            >
+              🚀 Criar Primeiro Documento
+            </button>
           </div>
         ) : (
-          <div className="grid gap-4">
-            {documents.map((doc) => (
-              <DocumentCard
-                key={doc.id}
-                document={doc}
-                onDelete={handleDeleteDocument}
-                formatTimeAgo={formatTimeAgo}
-              />
+          <div className="grid gap-6">
+            {documents.map((doc, index) => (
+              <div key={doc.id} className="animate-fade-in" style={{ animationDelay: `${index * 100}ms` }}>
+                <DocumentCard
+                  document={doc}
+                  onDelete={handleDeleteDocument}
+                  formatTimeAgo={formatTimeAgo}
+                />
+              </div>
             ))}
           </div>
         )}
@@ -228,8 +274,11 @@ export function Dashboard({ user }: DashboardProps) {
 
       {/* Mensagem de Erro */}
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-          {error}
+        <div className="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-2xl animate-fade-in">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">⚠️</span>
+            <span className="font-medium">{error}</span>
+          </div>
         </div>
       )}
     </div>

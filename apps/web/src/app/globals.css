@@ -1,118 +1,46 @@
-@import 'tailwindcss/base';
-@import 'tailwindcss/components';
-@import 'tailwindcss/utilities';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-@layer base {
-  html {
-    font-family: 'Inter', sans-serif;
-  }
-  
-  body {
-    @apply bg-gray-50 text-gray-900;
-  }
+/* Estilos básicos */
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
 }
 
-@layer components {
-  .btn {
-    @apply inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50;
-  }
-  
-  .btn-primary {
-    @apply btn bg-primary-600 text-white hover:bg-primary-700;
-  }
-  
-  .btn-secondary {
-    @apply btn bg-gray-100 text-gray-900 hover:bg-gray-200;
-  }
-  
-  .btn-ghost {
-    @apply btn hover:bg-gray-100 hover:text-gray-900;
-  }
-  
-  .input {
-    @apply flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
-  }
-  
-  .card {
-    @apply rounded-lg border border-gray-200 bg-white shadow-sm;
-  }
+/* Scrollbar customizada */
+::-webkit-scrollbar {
+  width: 8px;
 }
 
-/* Editor styles */
-.ProseMirror {
-  @apply min-h-[500px] p-4 focus:outline-none;
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
 }
 
-.ProseMirror p {
-  @apply mb-4;
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
 }
 
-.ProseMirror h1 {
-  @apply text-2xl font-bold mb-4;
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
-.ProseMirror h2 {
-  @apply text-xl font-bold mb-3;
+/* Animações básicas */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-.ProseMirror h3 {
-  @apply text-lg font-bold mb-2;
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-.ProseMirror ul, .ProseMirror ol {
-  @apply ml-6 mb-4;
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
 }
 
-.ProseMirror li {
-  @apply mb-1;
-}
-
-.ProseMirror blockquote {
-  @apply border-l-4 border-gray-300 pl-4 italic text-gray-600 mb-4;
-}
-
-.ProseMirror code {
-  @apply bg-gray-100 rounded px-1 py-0.5 text-sm font-mono;
-}
-
-.ProseMirror pre {
-  @apply bg-gray-100 rounded p-4 overflow-x-auto mb-4;
-}
-
-.ProseMirror pre code {
-  @apply bg-transparent p-0;
-}
-
-/* Collaboration cursors */
-.collaboration-cursor {
-  @apply relative border-l-2;
-  border-color: var(--cursor-color, #3b82f6);
-}
-
-.collaboration-cursor::after {
-  content: attr(data-user);
-  @apply absolute -top-6 -left-1 bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10;
-}
-
-/* Loading states */
-.skeleton {
-  @apply animate-pulse bg-gray-200 rounded;
-}
-
-/* Presence indicators */
-.presence-indicator {
-  @apply w-8 h-8 rounded-full border-2 border-white shadow-sm;
-}
-
-.presence-indicator.online {
-  @apply ring-2 ring-green-500;
-}
-
-/* Comments */
-.comment-marker {
-  @apply bg-yellow-200 rounded px-1;
-}
-
-.comment-thread {
-  @apply absolute z-20 bg-white border border-gray-200 rounded-lg shadow-lg p-4 max-w-sm;
+.animate-slide-up {
+  animation: slideUp 0.3s ease-out;
 }
