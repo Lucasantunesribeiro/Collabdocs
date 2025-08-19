@@ -111,6 +111,31 @@ cd apps/web
 npm run dev
 ```
 
+### 🧪 Testando as Correções
+
+1. **Aplicar migration do banco:**
+   ```bash
+   # Execute o script PowerShell
+   ./scripts/apply-migration-0002.ps1
+   ```
+
+2. **Testar salvamento de documentos:**
+   - Crie um novo documento no Dashboard
+   - Edite o conteúdo no editor
+   - Verifique se o salvamento automático funciona
+   - Teste o botão "Salvar" manual
+
+3. **Testar separação de conteúdo:**
+   - Crie múltiplos documentos
+   - Edite cada um com conteúdo diferente
+   - Verifique se cada documento mantém seu conteúdo isolado
+   - Recarregue a página para confirmar persistência
+
+4. **Verificar comunicação com API:**
+   - Abra DevTools → Network
+   - Observe as chamadas para `/api/documents`
+   - Confirme que PUT requests estão sendo feitos ao salvar
+
 ## 🛡️ Segurança
 
 - ✅ CORS com whitelist dinâmica (Pages + localhost)
@@ -125,12 +150,35 @@ npm run dev
 - ✅ **Remoção de dependências** - R2 e Durable Objects para o plano Free
 - ✅ **Build Next.js** - Funcionando perfeitamente
 - ✅ **Deploy Vercel** - Configurado para deploy automático
+- ✅ **Salvamento de documentos** - Endpoint PUT `/api/documents/:id` implementado
+- ✅ **Separação de conteúdo** - Cada documento agora tem seu próprio conteúdo isolado
+- ✅ **Persistência no banco** - Coluna `content` adicionada à tabela `documents`
+- ✅ **API real integrada** - Frontend agora se comunica com o backend real
 
 ## 🚀 Próximos Passos
 
-1. **Conectar repositório na Vercel** - Deploy automático
-2. **Testar frontend** - Uma vez deployado
-3. **Implementar funcionalidades** - OAuth, colaboração em tempo real, etc.
+1. **Aplicar migration do banco** - Execute `scripts/apply-migration-0002.ps1`
+2. **Testar funcionalidades corrigidas** - Salvamento e separação de documentos
+3. **Conectar repositório na Vercel** - Deploy automático
+4. **Implementar funcionalidades avançadas** - OAuth, colaboração em tempo real, etc.
+
+## 🔧 Correções Implementadas (v2.0)
+
+### ✅ **Problema de Salvamento Resolvido**
+- **Endpoint PUT** `/api/documents/:id` implementado no backend
+- **Coluna `content`** adicionada à tabela `documents` via migration
+- **API real integrada** no frontend para comunicação com o backend
+
+### ✅ **Problema de Conteúdo Compartilhado Resolvido**
+- **Estado isolado** por documento usando `documentId` da URL
+- **localStorage específico** para cada documento (`collabdocs_document_${id}_content`)
+- **Carregamento individual** de cada documento via API
+
+### ✅ **Melhorias na Arquitetura**
+- **Serviço de API** centralizado (`/lib/api.ts`)
+- **Tipos atualizados** para incluir campo `content`
+- **Tratamento de erros** melhorado com logs detalhados
+- **Salvamento automático** com debounce de 2 segundos
 
 ## 📝 Roadmap Próximo
 

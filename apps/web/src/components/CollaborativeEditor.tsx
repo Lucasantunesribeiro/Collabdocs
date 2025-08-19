@@ -1,42 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { apiService } from '@/lib/api';
 
-interface DocumentData {
-  id: string;
-  content: string;
-  lastSaved: Date;
-  isDirty: boolean;
+interface CollaborativeEditorProps {
+  documentId: string;
+  initialContent: string;
 }
 
-export function CollaborativeEditor() {
-  const [content, setContent] = useState(`# Documento de Demonstração
-
-## Bem-vindo ao CollabDocs! 🎉
-
-Este é um documento de exemplo para demonstrar as funcionalidades do sistema de documentos colaborativos.
-
-### ✨ Funcionalidades Disponíveis
-
-- **Edição em tempo real** - Veja as alterações instantaneamente
-- **Salvamento automático** - Seu trabalho é preservado automaticamente
-- **Histórico de versões** - Acompanhe todas as mudanças
-- **Colaboração simultânea** - Múltiplos usuários podem editar juntos
-
-### 🚀 Como Usar
-
-1. **Digite** no editor abaixo
-2. **Clique em Salvar** para persistir suas alterações
-3. **Compartilhe** o documento com sua equipe
-4. **Colabore** em tempo real
-
-### 💡 Dicas
-
-- Use **Markdown** para formatação
-- **Salve frequentemente** para não perder trabalho
-- **Comunique-se** com sua equipe durante a edição
-
-*Este documento foi criado para demonstrar as capacidades do CollabDocs. Experimente editar o conteúdo!*`);
+export function CollaborativeEditor({ documentId, initialContent }: CollaborativeEditorProps) {
+  const [content, setContent] = useState(initialContent);
 
   const [isTyping, setIsTyping] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -44,7 +17,7 @@ Este é um documento de exemplo para demonstrar as funcionalidades do sistema de
   const [isDirty, setIsDirty] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
 
-  // Simular salvamento automático
+  // Salvamento automático
   useEffect(() => {
     if (isDirty && !isTyping) {
       const timer = setTimeout(() => {
@@ -53,7 +26,7 @@ Este é um documento de exemplo para demonstrar as funcionalidades do sistema de
 
       return () => clearTimeout(timer);
     }
-  }, [content, isTyping, isDirty]);
+  }, [content, isTyping, isDirty, documentId]);
 
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newContent = e.target.value;
@@ -72,16 +45,16 @@ Este é um documento de exemplo para demonstrar as funcionalidades do sistema de
     setSaveStatus('saving');
     
     try {
-      // Simular salvamento automático
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Salvar na API
+      await apiService.updateDocument(documentId, { content });
       
       setLastSaved(new Date());
       setIsDirty(false);
       setSaveStatus('saved');
       
-      // Salvar no localStorage para persistência
-      localStorage.setItem('collabdocs_document_content', content);
-      localStorage.setItem('collabdocs_document_last_saved', new Date().toISOString());
+      // Salvar no localStorage como backup
+      localStorage.setItem(`collabdocs_document_${documentId}_content`, content);
+      localStorage.setItem(`collabdocs_document_${documentId}_last_saved`, new Date().toISOString());
       
     } catch (error) {
       setSaveStatus('error');
@@ -96,16 +69,16 @@ Este é um documento de exemplo para demonstrar as funcionalidades do sistema de
     setSaveStatus('saving');
     
     try {
-      // Simular salvamento manual
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Salvar na API
+      await apiService.updateDocument(documentId, { content });
       
       setLastSaved(new Date());
       setIsDirty(false);
       setSaveStatus('saved');
       
-      // Salvar no localStorage para persistência
-      localStorage.setItem('collabdocs_document_content', content);
-      localStorage.setItem('collabdocs_document_last_saved', new Date().toISOString());
+      // Salvar no localStorage como backup
+      localStorage.setItem(`collabdocs_document_${documentId}_content`, content);
+      localStorage.setItem(`collabdocs_document_${documentId}_last_saved`, new Date().toISOString());
       
       // Mostrar feedback visual
       setTimeout(() => setSaveStatus('saved'), 2000);
@@ -120,8 +93,8 @@ Este é um documento de exemplo para demonstrar as funcionalidades do sistema de
 
   // Carregar conteúdo salvo ao inicializar
   useEffect(() => {
-    const savedContent = localStorage.getItem('collabdocs_document_content');
-    const savedLastSaved = localStorage.getItem('collabdocs_document_last_saved');
+    const savedContent = localStorage.getItem(`collabdocs_document_${documentId}_content`);
+    const savedLastSaved = localStorage.getItem(`collabdocs_document_${documentId}_last_saved`);
     
     if (savedContent) {
       setContent(savedContent);
@@ -131,7 +104,7 @@ Este é um documento de exemplo para demonstrar as funcionalidades do sistema de
     if (savedLastSaved) {
       setLastSaved(new Date(savedLastSaved));
     }
-  }, []);
+  }, [documentId]);
 
   const formatTimeAgo = (date: Date) => {
     const now = new Date();

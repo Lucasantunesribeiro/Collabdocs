@@ -3,15 +3,7 @@
 import { useState, useEffect } from 'react';
 import { DocumentCard } from './DocumentCard';
 import { CreateDocumentModal } from './CreateDocumentModal';
-
-interface Document {
-  id: string;
-  title: string;
-  created_at: string;
-  updated_at: string;
-  visibility: 'private' | 'public';
-  owner_id: string;
-}
+import { apiService, Document } from '@/lib/api';
 
 interface DashboardProps {
   user?: any;
@@ -23,51 +15,16 @@ export function Dashboard({ user }: DashboardProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Dados de exemplo para demonstração
-  const demoDocuments: Document[] = [
-    {
-      id: 'doc-1',
-      title: '📋 Documento de Exemplo 1',
-      created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-      updated_at: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(),
-      visibility: 'private' as const,
-      owner_id: 'demo-user'
-    },
-    {
-      id: 'doc-2',
-      title: '📝 Documento de Exemplo 2',
-      created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-      updated_at: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
-      visibility: 'public' as const,
-      owner_id: 'demo-user'
-    },
-    {
-      id: 'doc-3',
-      title: '📊 Documento de Exemplo 3',
-      created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-      updated_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-      visibility: 'private' as const,
-      owner_id: 'demo-user'
-    }
-  ];
+
 
   useEffect(() => {
-    // Simular carregamento de documentos
     const loadDocuments = async () => {
       try {
-        // Se tivermos uma API real, aqui faríamos a chamada
-        // const response = await fetch('https://collab-docs.collabdocs.workers.dev/api/documents', {
-        //   headers: { 'Authorization': `Bearer ${token}` }
-        // });
-        // const data = await response.json();
-        // setDocuments(data.documents);
-        
-        // Por enquanto, usar dados de exemplo
-        setTimeout(() => {
-          setDocuments(demoDocuments);
-          setIsLoading(false);
-        }, 1000);
+        const response = await apiService.getDocuments();
+        setDocuments(response.documents);
+        setIsLoading(false);
       } catch (err) {
+        console.error('Erro ao carregar documentos:', err);
         setError('Erro ao carregar documentos');
         setIsLoading(false);
       }
@@ -78,30 +35,12 @@ export function Dashboard({ user }: DashboardProps) {
 
   const handleCreateDocument = async (title: string, visibility: 'private' | 'public') => {
     try {
-      // Se tivermos uma API real, aqui faríamos a chamada
-      // const response = await fetch('https://collab-docs.collabdocs.workers.dev/api/documents', {
-      //   method: 'POST',
-      //   headers: { 
-      //     'Content-Type': 'application/json',
-      //     'Authorization': `Bearer ${token}` 
-      //   },
-      //   body: JSON.stringify({ title, visibility })
-      // });
-      // const data = await response.json();
+      const response = await apiService.createDocument({ title, visibility });
       
-      // Por enquanto, criar documento localmente
-      const newDoc: Document = {
-        id: `doc-${Date.now()}`,
-        title,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        visibility,
-        owner_id: user?.id || 'demo-user'
-      };
-      
-      setDocuments(prev => [newDoc, ...prev]);
+      setDocuments(prev => [response.document, ...prev]);
       setShowCreateModal(false);
     } catch (err) {
+      console.error('Erro ao criar documento:', err);
       setError('Erro ao criar documento');
     }
   };

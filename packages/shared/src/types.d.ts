@@ -11,6 +11,7 @@ export interface Document {
     id: string;
     owner_id: string;
     title: string;
+    content: string;
     visibility: 'private' | 'public';
     created_at: string;
     updated_at: string;

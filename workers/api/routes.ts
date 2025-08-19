@@ -79,6 +79,11 @@ export async function handleAPI(request: Request, env: Env): Promise<Response> {
       const documentId = path.split('/')[2];
       return await getDocumentHistory(authenticatedRequest, env, documentId);
     }
+    
+    if (path.startsWith('/documents/') && method === 'PUT') {
+      const documentId = path.split('/')[2];
+      return await updateDocument(authenticatedRequest, env, documentId);
+    }
 
     return new Response(JSON.stringify({ error: 'Not Found' }), { 
       status: 404,
@@ -148,7 +153,7 @@ async function createDocument(request: AuthenticatedRequest, env: Env): Promise<
     return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
   }
 
-  const body = await request.json() as { title: string; visibility?: 'private' | 'public' };
+  const body = await request.json() as { title: string; content?: string; visibility?: 'private' | 'public' };
   
   if (!body.title) {
     return new Response(JSON.stringify({ error: 'Title is required' }), { status: 400 });
@@ -156,15 +161,39 @@ async function createDocument(request: AuthenticatedRequest, env: Env): Promise<
 
   const documentId = crypto.randomUUID();
   const now = new Date().toISOString();
+  
+  // Default content for new documents
+  const defaultContent = body.content || `# ${body.title}
+
+## Bem-vindo ao CollabDocs! 🎉
+
+Este é um documento em branco. Comece a digitar para criar seu conteúdo.
+
+### ✨ Funcionalidades Disponíveis
+
+- **Edição em tempo real** - Veja as alterações instantaneamente
+- **Salvamento automático** - Seu trabalho é preservado automaticamente
+- **Histórico de versões** - Acompanhe todas as mudanças
+- **Colaboração simultânea** - Múltiplos usuários podem editar juntos
+
+### 🚀 Como Usar
+
+1. **Digite** no editor abaixo
+2. **Clique em Salvar** para persistir suas alterações
+3. **Compartilhe** o documento com sua equipe
+4. **Colabore** em tempo real
+
+*Este documento foi criado automaticamente. Experimente editar o conteúdo!*`;
 
   // Create document
   await env.DB.prepare(`
-    INSERT INTO documents (id, owner_id, title, visibility, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO documents (id, owner_id, title, content, visibility, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `).bind(
     documentId,
     request.user.sub,
     body.title,
+    defaultContent,
     body.visibility || 'private',
     now,
     now
@@ -180,6 +209,7 @@ async function createDocument(request: AuthenticatedRequest, env: Env): Promise<
     id: documentId,
     owner_id: request.user.sub,
     title: body.title,
+    content: defaultContent,
     visibility: (body.visibility || 'private') as 'private' | 'public',
     created_at: now,
     updated_at: now,
@@ -210,7 +240,8 @@ async function getDocument(request: AuthenticatedRequest, env: Env, documentId: 
   }
 
   const document = await env.DB.prepare(`
-    SELECT * FROM documents WHERE id = ?
+    SELECT id, owner_id, title, content, visibility, created_at, updated_at, last_snapshot_r2_key 
+    FROM documents WHERE id = ?
   `).bind(documentId).first();
 
   if (!document) {
@@ -296,6 +327,62 @@ async function updatePermissions(request: AuthenticatedRequest, env: Env, docume
   `).bind(documentId, body.user_id, body.role).run();
 
   return new Response(JSON.stringify({ success: true }), {
+    headers: { 'Content-Type': 'application/json' }
+  });
+}
+
+async function updateDocument(request: AuthenticatedRequest, env: Env, documentId: string): Promise<Response> {
+  if (!request.user) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+  }
+
+  // Check permissions (only owners and editors can update)
+  const permission = await env.DB.prepare(`
+    SELECT p.role FROM permissions p
+    WHERE p.document_id = ? AND p.user_id = ?
+    UNION
+    SELECT 'owner' as role FROM documents d
+    WHERE d.id = ? AND d.owner_id = ?
+  `).bind(documentId, request.user.sub, documentId, request.user.sub).first();
+
+  if (!permission || (permission.role !== 'owner' && permission.role !== 'editor')) {
+    return new Response(JSON.stringify({ error: 'Forbidden - Read-only access' }), { status: 403 });
+  }
+
+  const body = await request.json() as { content: string; title?: string };
+  
+  if (!body.content) {
+    return new Response(JSON.stringify({ error: 'Content is required' }), { status: 400 });
+  }
+
+  const now = new Date().toISOString();
+
+  // Update document content and timestamp
+  await env.DB.prepare(`
+    UPDATE documents 
+    SET content = ?, updated_at = ?
+    ${body.title ? ', title = ?' : ''}
+    WHERE id = ?
+  `).bind(
+    body.content,
+    now,
+    ...(body.title ? [body.title] : []),
+    documentId
+  ).run();
+
+  // Get updated document
+  const document = await env.DB.prepare(`
+    SELECT * FROM documents WHERE id = ?
+  `).bind(documentId).first();
+
+  if (!document) {
+    return new Response(JSON.stringify({ error: 'Document not found' }), { status: 404 });
+  }
+
+  return new Response(JSON.stringify({ 
+    document,
+    message: 'Document updated successfully'
+  }), {
     headers: { 'Content-Type': 'application/json' }
   });
 }

@@ -3,15 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { CollaborativeEditor } from '@/components/CollaborativeEditor';
-
-interface Document {
-  id: string;
-  title: string;
-  created_at: string;
-  updated_at: string;
-  visibility: 'private' | 'public';
-  owner_id: string;
-}
+import { apiService, Document } from '@/lib/api';
 
 export default function DocumentPage({ params }: { params: Promise<{ id: string }> }) {
   const [document, setDocument] = useState<Document | null>(null);
@@ -24,20 +16,15 @@ export default function DocumentPage({ params }: { params: Promise<{ id: string 
   useEffect(() => {
     const loadDocument = async () => {
       try {
-        // Simular carregamento de documento
-        const demoDoc: Document = {
-          id: await params.then(p => p.id),
-          title: `📝 Documento ${await params.then(p => p.id.slice(-4))}`,
-          created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-          updated_at: new Date().toISOString(),
-          visibility: 'private' as const,
-          owner_id: 'demo-user'
-        };
+        const documentId = await params.then(p => p.id);
         
-        setDocument(demoDoc);
+        // Carregar documento da API
+        const response = await apiService.getDocument(documentId);
+        setDocument(response.document);
         setIsEditing(editMode);
         setIsLoading(false);
       } catch (err) {
+        console.error('Erro ao carregar documento:', err);
         setError('Erro ao carregar documento');
         setIsLoading(false);
       }
@@ -221,7 +208,7 @@ export default function DocumentPage({ params }: { params: Promise<{ id: string 
             
             <div className="p-6">
               {isEditing ? (
-                <CollaborativeEditor />
+                <CollaborativeEditor documentId={document.id} initialContent={document.content} />
               ) : (
                 <div className="text-center py-16">
                   <div className="text-6xl mb-6">📝</div>

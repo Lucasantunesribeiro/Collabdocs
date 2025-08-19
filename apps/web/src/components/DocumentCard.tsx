@@ -1,15 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-
-interface Document {
-  id: string;
-  title: string;
-  created_at: string;
-  updated_at: string;
-  visibility: 'private' | 'public';
-  owner_id: string;
-}
+import { Document } from '@/lib/api';
 
 interface DocumentCardProps {
   document: Document;
