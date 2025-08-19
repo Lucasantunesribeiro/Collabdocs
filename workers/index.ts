@@ -29,10 +29,6 @@ export default {
       'https://1312114f.collab-docs-frontend.pages.dev',
       'https://2cec1a20.collab-docs-frontend.pages.dev',
       'https://1aa6de9a.collab-docs-frontend.pages.dev',
-      // Domínios da Vercel
-      'https://collab-docs-r6e5i4fz6-lucas-antunes-projects.vercel.app',
-      'https://*.vercel.app',
-      'https://*.vercel.app/*'
     ];
     
     const origin = request.headers.get('Origin');
@@ -47,7 +43,10 @@ export default {
         return origin === allowed;
       });
       
-      if (isAllowed) {
+      // Aceitar automaticamente qualquer domínio da Vercel
+      const isVercelDomain = origin.includes('vercel.app');
+      
+      if (isAllowed || isVercelDomain) {
         corsOrigin = origin;
       }
     }

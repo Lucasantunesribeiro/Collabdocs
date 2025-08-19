@@ -1,12 +1,16 @@
 import { Inter } from 'next/font/google';
 import { AuthProvider } from '@/context/AuthContext';
 import './globals.css';
+import { Metadata } from 'next';
 
 const inter = Inter({ subsets: ['latin'] });
 
-export const metadata = {
+export const metadata: Metadata = {
   title: 'CollabDocs - Editor Colaborativo',
   description: 'Editor de documentos colaborativo em tempo real com CRDT',
+  icons: {
+    icon: '/favicon.svg',
+  },
 };
 
 interface RootLayoutProps {
