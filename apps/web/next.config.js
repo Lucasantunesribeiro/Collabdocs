@@ -1,5 +1,23 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Configurações de webpack para otimização
+  webpack: (config, { dev, isServer }) => {
+    if (!dev && !isServer) {
+      // Otimizações para produção
+      config.optimization.splitChunks = {
+        chunks: 'all',
+        cacheGroups: {
+          vendor: {
+            test: /[\\/]node_modules[\\/]/,
+            name: 'vendors',
+            chunks: 'all',
+          },
+        },
+      };
+    }
+    return config;
+  },
+  
   experimental: {
     turbo: {
       rules: {
@@ -9,23 +27,15 @@ const nextConfig = {
         },
       },
     },
+    // Otimizações experimentais
+    optimizePackageImports: ['@collab-docs/shared', '@collab-docs/yjs-provider'],
   },
+  
   transpilePackages: ['@collab-docs/shared', '@collab-docs/yjs-provider'],
+  
   env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787',
-    NEXT_PUBLIC_WS_URL: process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8787',
-  },
-  async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: `${process.env.NEXT_PUBLIC_API_URL}/api/:path*`,
-      },
-      {
-        source: '/auth/:path*',
-        destination: `${process.env.NEXT_PUBLIC_API_URL}/auth/:path*`,
-      },
-    ];
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'https://collab-docs.collabdocs.workers.dev',
+    NEXT_PUBLIC_WS_URL: process.env.NEXT_PUBLIC_API_URL || 'https://collab-docs.collabdocs.workers.dev',
   },
 };
 

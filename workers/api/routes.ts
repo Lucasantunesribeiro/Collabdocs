@@ -10,9 +10,9 @@ export async function handleAPI(request: Request, env: Env): Promise<Response> {
   const path = url.pathname.replace('/api', '');
   const method = request.method;
 
-  // Authenticate request (except for health checks)
+  // Authenticate request (except for health checks and API root)
   const authenticatedRequest = await authenticateRequest(request, env);
-  if (!authenticatedRequest.user && !path.startsWith('/health')) {
+  if (!authenticatedRequest.user && !path.startsWith('/health') && path !== '' && path !== '/') {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), { 
       status: 401,
       headers: { 'Content-Type': 'application/json' }
@@ -21,6 +21,26 @@ export async function handleAPI(request: Request, env: Env): Promise<Response> {
 
   try {
     // Route API requests
+    if (path === '' || path === '/') {
+      return new Response(JSON.stringify({ 
+        message: 'CollabDocs API',
+        version: '1.0.0',
+        status: 'running',
+        timestamp: new Date().toISOString(),
+        endpoints: [
+          'GET /api/documents',
+          'POST /api/documents',
+          'GET /api/documents/:id',
+          'GET /api/documents/:id/snapshot',
+          'POST /api/documents/:id/permissions',
+          'GET /api/documents/:id/history'
+        ]
+      }), { 
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
     if (path === '/documents' && method === 'GET') {
       return await getDocuments(authenticatedRequest, env);
     }
@@ -220,18 +240,23 @@ async function getDocumentSnapshot(request: AuthenticatedRequest, env: Env, docu
   }
 
   // Get signed URL for R2 object
-  const snapshot = await env.SNAPSHOTS.get(document.last_snapshot_r2_key);
-  if (!snapshot) {
-    return new Response(JSON.stringify({ error: 'Snapshot not found' }), { status: 404 });
-  }
+  // const snapshot = await env.SNAPSHOTS.get(document.last_snapshot_r2_key);
+  // if (!snapshot) {
+  //   return new Response(JSON.stringify({ error: 'Snapshot not found' }), { status: 404 });
+  // }
 
-  const buffer = await snapshot.arrayBuffer();
+  // const buffer = await snapshot.arrayBuffer();
   
-  return new Response(buffer, {
-    headers: { 
-      'Content-Type': 'application/octet-stream',
-      'Content-Encoding': 'gzip'
-    }
+  // return new Response(buffer, {
+  //   headers: { 
+  //     'Content-Type': 'application/octet-stream',
+  //     'Content-Encoding': 'gzip'
+  //   }
+  // });
+  
+  return new Response(JSON.stringify({ error: 'Snapshots temporarily disabled' }), { 
+    status: 501,
+    headers: { 'Content-Type': 'application/json' }
   });
 }
 

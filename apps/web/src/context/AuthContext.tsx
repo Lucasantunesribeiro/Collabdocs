@@ -68,7 +68,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const parts = token.split('.');
       if (parts.length !== 3) return null;
       
-      const payload = JSON.parse(atob(parts[1]));
+      const payload = JSON.parse(atob(parts[1]!));
       return payload as JWTPayload;
     } catch {
       return null;

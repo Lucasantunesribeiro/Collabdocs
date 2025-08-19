@@ -9,13 +9,19 @@
     "strict": true,
     "noEmit": false,
     "skipLibCheck": true,
+    "noEmitOnError": false,
+
     "forceConsistentCasingInFileNames": true,
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "baseUrl": ".",
     "paths": {
       "@collab-docs/shared": ["../shared/src"]
-    }
+    },
+    "preserveSymlinks": true,
+    "allowJs": true,
+    "noEmitOnError": false,
+    "skipDefaultLibCheck": true
   },
   "include": ["src/**/*"],
   "exclude": ["dist", "node_modules"]

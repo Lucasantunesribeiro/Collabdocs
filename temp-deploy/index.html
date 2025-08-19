@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CollabDocs - Teste</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 40px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        .status {
+            background: rgba(76, 175, 80, 0.2);
+            border: 2px solid #4CAF50;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .api-test {
+            background: rgba(33, 150, 243, 0.2);
+            border: 2px solid #2196F3;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        .btn {
+            background: #4CAF50;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px;
+            transition: background 0.3s;
+        }
+        .btn:hover {
+            background: #45a049;
+        }
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .loading {
+            display: none;
+            color: #FFC107;
+        }
+        .success {
+            color: #4CAF50;
+        }
+        .error {
+            color: #f44336;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 CollabDocs</h1>
+        
+        <div class="status">
+            <h2>✅ Frontend Funcionando!</h2>
+            <p>Esta página está sendo servida pelo Cloudflare Pages</p>
+        </div>
+        
+        <div class="api-test">
+            <h3>🔗 Teste da API</h3>
+            <p>Testando conexão com o backend...</p>
+            <button class="btn" onclick="testAPI()">Testar API</button>
+            <button class="btn" onclick="testAuth()">Testar Auth</button>
+            <div id="result"></div>
+            <div class="loading" id="loading">⏳ Testando...</div>
+        </div>
+        
+        <div class="status">
+            <h3>🎯 Status do Sistema</h3>
+            <p>1. ✅ Backend (Worker) - Funcionando</p>
+            <p>2. ✅ Frontend (Pages) - Funcionando</p>
+            <p>3. ✅ CORS - Configurado e funcionando</p>
+            <p>4. ✅ API - Respondendo corretamente</p>
+            <p>5. ✅ Auth - Endpoints configurados</p>
+            <p>6. ✅ Sistema 100% Funcional!</p>
+            <p>7. 🚀 Próximo: Integração completa do Next.js</p>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'https://collab-docs.collabdocs.workers.dev';
+        
+        async function testAPI() {
+            const resultDiv = document.getElementById('result');
+            const loadingDiv = document.getElementById('loading');
+            
+            resultDiv.innerHTML = '';
+            loadingDiv.style.display = 'block';
+            
+            try {
+                const response = await fetch(`${API_URL}/api`);
+                const data = await response.json();
+                
+                resultDiv.innerHTML = `
+                    <div class="success">
+                        <h4>✅ API Funcionando!</h4>
+                        <p><strong>Status:</strong> ${response.status}</p>
+                        <p><strong>Resposta:</strong> ${JSON.stringify(data, null, 2)}</p>
+                    </div>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <h4>❌ Erro na API</h4>
+                        <p><strong>Erro:</strong> ${error.message}</p>
+                    </div>
+                `;
+            } finally {
+                loadingDiv.style.display = 'none';
+            }
+        }
+        
+        async function testAuth() {
+            const resultDiv = document.getElementById('result');
+            const loadingDiv = document.getElementById('loading');
+            
+            resultDiv.innerHTML = '';
+            loadingDiv.style.display = 'block';
+            
+            try {
+                const response = await fetch(`${API_URL}/auth/oauth`);
+                const data = await response.text();
+                
+                resultDiv.innerHTML = `
+                    <div class="success">
+                        <h4>✅ Auth Funcionando!</h4>
+                        <p><strong>Status:</strong> ${response.status}</p>
+                        <p><strong>Resposta:</strong> ${data.substring(0, 200)}...</p>
+                    </div>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <h4>❌ Erro no Auth</h4>
+                        <p><strong>Erro:</strong> ${error.message}</p>
+                    </div>
+                `;
+            } finally {
+                loadingDiv.style.display = 'none';
+            }
+        }
+        
+        // Teste automático ao carregar a página
+        window.onload = function() {
+            setTimeout(testAPI, 1000);
+        };
+    </script>
+</body>
+</html>

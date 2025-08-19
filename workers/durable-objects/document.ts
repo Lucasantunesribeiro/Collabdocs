@@ -3,7 +3,7 @@ import { WebSocketMessage, PresenceData } from '@collab-docs/shared';
 
 export interface Env {
   DB: D1Database;
-  SNAPSHOTS: R2Bucket;
+  // SNAPSHOTS: R2Bucket;
   CACHE: KVNamespace;
 }
 
@@ -130,14 +130,14 @@ export class DocumentDurableObject {
         SELECT last_snapshot_r2_key FROM documents WHERE id = ?
       `).bind(documentId).first();
 
-      if (doc?.last_snapshot_r2_key) {
-        const snapshot = await this.env.SNAPSHOTS.get(doc.last_snapshot_r2_key);
-        if (snapshot) {
-          const buffer = await snapshot.arrayBuffer();
-          const update = new Uint8Array(buffer);
-          Y.applyUpdate(this.doc, update);
-        }
-      }
+      // if (doc?.last_snapshot_r2_key) {
+      //   const snapshot = await this.env.SNAPSHOTS.get(doc.last_snapshot_r2_key);
+      //   if (snapshot) {
+      //     const buffer = await snapshot.arrayBuffer();
+      //     const update = new Uint8Array(buffer);
+      //     Y.applyUpdate(this.doc, update);
+      //   }
+      // }
     } catch (error) {
       console.error('Error initializing document:', error);
     }
@@ -304,47 +304,8 @@ export class DocumentDurableObject {
   }
 
   private async maybeCreateSnapshot(): Promise<void> {
-    const now = Date.now();
-    const shouldSnapshot = 
-      this.updateCount >= 500 || 
-      (now - this.lastUpdate > 5000 && this.updateCount > 0);
-
-    if (!shouldSnapshot) return;
-
-    try {
-      const state = Y.encodeStateAsUpdate(this.doc);
-      const compressed = await this.compressData(state);
-      
-      const snapshotId = crypto.randomUUID();
-      const r2Key = `snapshots/${this.documentId}/${Date.now()}-${snapshotId}.bin`;
-      
-      // Store in R2
-      await this.env.SNAPSHOTS.put(r2Key, compressed);
-      
-      // Update database
-      await this.env.DB.prepare(`
-        UPDATE documents 
-        SET last_snapshot_r2_key = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `).bind(r2Key, this.documentId).run();
-
-      // Store snapshot metadata
-      await this.env.DB.prepare(`
-        INSERT INTO snapshots (id, document_id, r2_key, version_number, author_id)
-        VALUES (?, ?, ?, ?, ?)
-      `).bind(
-        snapshotId,
-        this.documentId,
-        r2Key,
-        Math.floor(Date.now() / 1000),
-        this.sessions.values().next().value?.userId || 'system'
-      ).run();
-
-      this.updateCount = 0;
-      
-    } catch (error) {
-      console.error('Error creating snapshot:', error);
-    }
+    // Snapshots temporarily disabled due to R2 not being enabled
+    return;
   }
 
   private async compressData(data: Uint8Array): Promise<Uint8Array> {

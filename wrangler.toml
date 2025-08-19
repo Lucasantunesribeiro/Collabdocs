@@ -1,29 +1,30 @@
 name = "collab-docs"
 main = "workers/index.ts"
 compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
 minify = true
 
-[durable_objects]
-bindings = [
-  { name = "DOCUMENT_DO", class_name = "DocumentDurableObject" }
-]
+# [durable_objects]
+# bindings = [
+#   { name = "DOCUMENT_DO", class_name = "DocumentDurableObject" }
+# ]
 
-[[migrations]]
-tag = "v1"
-new_classes = ["DocumentDurableObject"]
+# [[migrations]]
+# tag = "v1"
+# new_classes = ["DocumentDurableObject"]
 
 [[d1_databases]]
 binding = "DB"
 database_name = "collab-docs-db"
 database_id = "5035fcc8-c02e-4290-b880-da14ba523dd9"
 
-[[r2_buckets]]
-binding = "SNAPSHOTS"
-bucket_name = "collab-docs-snapshots"
+# [[r2_buckets]]
+# binding = "SNAPSHOTS"
+# bucket_name = "collab-docs-snapshots"
 
 [[kv_namespaces]]
 binding = "CACHE"
-id = "placeholder"
+id = "588b9a52eef149828fdab58dfb73d7ff"
 
 [vars]
 ENVIRONMENT = "development"
@@ -34,7 +35,11 @@ vars = { ENVIRONMENT = "production" }
 [build]
 command = "npm run build"
 
+[pages]
+pages_build_output_dir = "apps/web/.next"
+
 [[rules]]
 type = "ESModule"
 globs = ["**/*.js", "**/*.ts"]
+
 

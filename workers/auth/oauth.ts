@@ -20,6 +20,24 @@ export async function handleAuth(request: Request, env: Env): Promise<Response> 
   const url = new URL(request.url);
   const path = url.pathname.replace('/auth', '');
 
+  // Endpoint raiz para auth
+  if (path === '' || path === '/') {
+    return new Response(JSON.stringify({ 
+      message: 'CollabDocs Authentication Service',
+      version: '1.0.0',
+      status: 'running',
+      endpoints: [
+        'GET /auth/github - Login com GitHub',
+        'GET /auth/google - Login com Google',
+        'GET /auth/logout - Logout',
+        'GET /auth/oauth - Este endpoint (info)'
+      ]
+    }), { 
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+
   if (path === '/github') {
     return handleGitHubLogin(env);
   }
@@ -38,6 +56,25 @@ export async function handleAuth(request: Request, env: Env): Promise<Response> 
   
   if (path === '/logout') {
     return handleLogout();
+  }
+  
+  // Endpoint específico para /auth/oauth
+  if (path === '/oauth') {
+    return new Response(JSON.stringify({ 
+      message: 'CollabDocs OAuth Service',
+      version: '1.0.0',
+      status: 'running',
+      endpoints: [
+        'GET /auth/github - Login com GitHub',
+        'GET /auth/google - Login com Google',
+        'GET /auth/logout - Logout',
+        'GET /auth/oauth - Este endpoint (info)'
+      ],
+      note: 'Este é o endpoint específico para /auth/oauth'
+    }), { 
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 
   return new Response(JSON.stringify({ error: 'Auth endpoint not found' }), { 

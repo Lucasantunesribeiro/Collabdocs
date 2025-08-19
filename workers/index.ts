@@ -1,13 +1,13 @@
-import { DocumentDurableObject } from './durable-objects/document';
+// import { DocumentDurableObject } from './durable-objects/document';
 import { handleAuth } from './auth/oauth';
 import { handleAPI } from './api/routes';
 
-export { DocumentDurableObject };
+// export { DocumentDurableObject };
 
 export interface Env {
-  DOCUMENT_DO: DurableObjectNamespace;
+  // DOCUMENT_DO: DurableObjectNamespace;
   DB: D1Database;
-  SNAPSHOTS: R2Bucket;
+  // SNAPSHOTS: R2Bucket;
   CACHE: KVNamespace;
   GITHUB_CLIENT_ID: string;
   GITHUB_CLIENT_SECRET: string;
@@ -21,9 +21,35 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     
-    // CORS headers para development
+    // CORS headers para aceitar múltiplos domínios
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:3002',
+      'https://e9de5f65.collab-docs-frontend.pages.dev',
+      'https://1312114f.collab-docs-frontend.pages.dev',
+      'https://2cec1a20.collab-docs-frontend.pages.dev',
+      'https://1aa6de9a.collab-docs-frontend.pages.dev'
+    ];
+    
+    const origin = request.headers.get('Origin');
+    let corsOrigin = 'http://localhost:3000'; // default
+    
+    if (origin) {
+      // Verificar se o origin está na lista de permitidos
+      const isAllowed = allowedOrigins.some(allowed => {
+        if (allowed.includes('*')) {
+          return origin.includes(allowed.replace('*', ''));
+        }
+        return origin === allowed;
+      });
+      
+      if (isAllowed) {
+        corsOrigin = origin;
+      }
+    }
+    
     const corsHeaders = {
-      'Access-Control-Allow-Origin': env.FRONTEND_URL || 'http://localhost:3000',
+      'Access-Control-Allow-Origin': corsOrigin,
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       'Access-Control-Allow-Credentials': 'true',
@@ -37,23 +63,22 @@ export default {
     let response: Response;
 
     try {
-      // Route WebSocket connections to Durable Objects
+      // Route WebSocket connections to Durable Objects (temporarily disabled)
       if (url.pathname.startsWith('/ws/')) {
-        const documentId = url.pathname.split('/')[2];
-        if (!documentId) {
-          response = new Response('Document ID required', { status: 400 });
-        } else {
-          const id = env.DOCUMENT_DO.idFromName(documentId);
-          const stub = env.DOCUMENT_DO.get(id);
-          response = await stub.fetch(request);
-        }
+        response = new Response(JSON.stringify({ 
+          error: 'WebSocket functionality temporarily disabled',
+          message: 'Durable Objects not available on free plan'
+        }), { 
+          status: 503,
+          headers: { 'Content-Type': 'application/json' }
+        });
       }
       // Route auth requests
-      else if (url.pathname.startsWith('/auth/')) {
+      else if (url.pathname.startsWith('/auth')) {
         response = await handleAuth(request, env);
       }
       // Route API requests
-      else if (url.pathname.startsWith('/api/')) {
+      else if (url.pathname.startsWith('/api')) {
         response = await handleAPI(request, env);
       }
       // Health check
