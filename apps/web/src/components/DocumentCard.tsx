@@ -27,6 +27,16 @@ export function DocumentCard({ document, onDelete, formatTimeAgo }: DocumentCard
     setShowDropdown(false);
   };
 
+  const handleOpen = () => {
+    // Redirecionar para a página do documento
+    window.location.href = `/document/${document.id}`;
+  };
+
+  const handleEdit = () => {
+    // Redirecionar para a página de edição do documento
+    window.location.href = `/document/${document.id}?edit=true`;
+  };
+
   const getVisibilityIcon = () => {
     return document.visibility === 'private' ? '🔒' : '🌐';
   };
@@ -76,11 +86,7 @@ export function DocumentCard({ document, onDelete, formatTimeAgo }: DocumentCard
               <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-2xl border border-gray-200/50 backdrop-blur-md z-10 animate-slide-up">
                 <div className="py-2">
                   <button
-                    onClick={() => {
-                      // Implementar abertura do documento
-                      console.log('Abrir documento:', document.id);
-                      setShowDropdown(false);
-                    }}
+                    onClick={handleOpen}
                     className="w-full px-4 py-3 text-left text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors duration-200 flex items-center gap-3 group"
                   >
                     <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-200 transition-colors duration-200">
@@ -93,11 +99,7 @@ export function DocumentCard({ document, onDelete, formatTimeAgo }: DocumentCard
                   </button>
                   
                   <button
-                    onClick={() => {
-                      // Implementar edição do documento
-                      console.log('Editar documento:', document.id);
-                      setShowDropdown(false);
-                    }}
+                    onClick={handleEdit}
                     className="w-full px-4 py-3 text-left text-gray-700 hover:bg-green-50 hover:text-green-600 transition-colors duration-200 flex items-center gap-3 group"
                   >
                     <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-200 transition-colors duration-200">
