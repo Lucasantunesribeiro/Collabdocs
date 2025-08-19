@@ -6,9 +6,9 @@ import { handleAPI } from './api/routes';
 
 export interface Env {
   // DOCUMENT_DO: DurableObjectNamespace;
-  DB: D1Database;
+  DB: any; // D1Database temporariamente desabilitado
   // SNAPSHOTS: R2Bucket;
-  CACHE: KVNamespace;
+  CACHE: any; // KVNamespace temporariamente desabilitado
   GITHUB_CLIENT_ID: string;
   GITHUB_CLIENT_SECRET: string;
   GOOGLE_CLIENT_ID: string;
@@ -18,7 +18,7 @@ export interface Env {
 }
 
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: any): Promise<Response> {
     const url = new URL(request.url);
     
     // CORS headers para aceitar múltiplos domínios
@@ -28,7 +28,11 @@ export default {
       'https://e9de5f65.collab-docs-frontend.pages.dev',
       'https://1312114f.collab-docs-frontend.pages.dev',
       'https://2cec1a20.collab-docs-frontend.pages.dev',
-      'https://1aa6de9a.collab-docs-frontend.pages.dev'
+      'https://1aa6de9a.collab-docs-frontend.pages.dev',
+      // Domínios da Vercel
+      'https://collab-docs-r6e5i4fz6-lucas-antunes-projects.vercel.app',
+      'https://*.vercel.app',
+      'https://*.vercel.app/*'
     ];
     
     const origin = request.headers.get('Origin');
@@ -80,6 +84,10 @@ export default {
       // Route API requests
       else if (url.pathname.startsWith('/api')) {
         response = await handleAPI(request, env);
+      }
+      // Favicon endpoint
+      else if (url.pathname === '/favicon.ico') {
+        response = new Response(null, { status: 204 });
       }
       // Health check
       else if (url.pathname === '/health') {
