@@ -1,14 +1,39 @@
 # CollabDocs - Plataforma de Documentos Colaborativos
 
-🎉 **Backend 100% Funcional! Frontend em Desenvolvimento**
+🎉 **Backend 100% Funcional! Frontend configurado para Vercel**
 
 ## 🌐 Acesso ao Sistema
 
 - **Backend API (Cloudflare Worker):** ✅ https://collab-docs.collabdocs.workers.dev/api
 - **Auth (Info):** ✅ https://collab-docs.collabdocs.workers.dev/auth/oauth
-- **Frontend (Cloudflare Pages):** 🔄 Em desenvolvimento - deploy estático em andamento
+- **Frontend (Vercel):** 🚀 **Deploy automático configurado!**
 
-> **Status:** Worker API funcionando perfeitamente, frontend sendo configurado para deploy estático
+> **Status:** Worker API funcionando perfeitamente, frontend configurado para Vercel com deploy automático
+
+## 🚀 Deploy na Vercel
+
+### ✅ **Configuração Automática**
+O projeto está configurado para deploy automático na Vercel:
+
+1. **Conecte o repositório GitHub** na [Vercel Dashboard](https://vercel.com/dashboard)
+2. **Selecione o repositório:** `Lucasantunesribeiro/Collabdocs`
+3. **Configuração automática:**
+   - Framework: Next.js
+   - Build Command: `cd apps/web && npm run build`
+   - Output Directory: `apps/web/.next`
+   - Install Command: `npm install`
+
+### 🔧 **Variáveis de Ambiente**
+Configure estas variáveis no Vercel:
+```
+NEXT_PUBLIC_API_URL=https://collab-docs.collabdocs.workers.dev
+NEXT_PUBLIC_WS_URL=https://collab-docs.collabdocs.workers.dev
+```
+
+### 📱 **Deploy Automático**
+- ✅ Push para `main` → Deploy automático
+- ✅ Preview deployments para PRs
+- ✅ Rollback automático em caso de erro
 
 ## 👤 Usuários de Teste
 
@@ -23,11 +48,11 @@
 - **Cold start:** ~10-20ms (edge)
 - **CORS:** Configurado para múltiplos domínios
 
-### 🔄 Frontend (Next.js / Pages)
-- **Hospedagem:** Cloudflare Pages
-- **Status:** Build funcionando, deploy estático em configuração
+### 🚀 Frontend (Next.js / Vercel)
+- **Hospedagem:** Vercel (configurado)
+- **Status:** Configurado para deploy automático
 - **Build:** Next.js 15 (App Router) - OK
-- **Deploy:** Ajustando para export estático
+- **Deploy:** Automático via GitHub
 
 ### ℹ️ Infra (Free Tier)
 - **D1 (DB):** ativo
@@ -43,6 +68,7 @@
 - ✅ **Dashboard estático** - Com exemplos (UI)
 - ✅ **Página de documento** - `/document/demo` com editor básico (modo demo)
 - ✅ **Build Next.js** - Funcionando perfeitamente
+- ✅ **Configuração Vercel** - Deploy automático configurado
 
 ## 🔧 Tecnologias
 
@@ -51,6 +77,7 @@
 - **Backend:** Cloudflare Workers (Typescript)
 - **Dados:** Cloudflare D1 (SQL), KV (cache)
 - **Monorepo:** Turborepo
+- **Deploy:** Vercel (frontend) + Cloudflare Workers (backend)
 
 ## 🔄 Manutenção
 
@@ -59,8 +86,9 @@
 # Worker (API) - FUNCIONANDO
 wrangler deploy
 
-# Pages (Frontend) - EM CONFIGURAÇÃO
-wrangler pages deploy apps/web/.next --project-name collab-docs-frontend --commit-dirty=true
+# Frontend - AUTOMÁTICO na Vercel
+# Apenas faça push para main:
+git push origin main
 ```
 
 ### Logs e Diagnóstico
@@ -96,16 +124,17 @@ npm run dev
 - ✅ **Auth root** - `/auth` e `/auth/oauth` com respostas 200
 - ✅ **Remoção de dependências** - R2 e Durable Objects para o plano Free
 - ✅ **Build Next.js** - Funcionando perfeitamente
+- ✅ **Deploy Vercel** - Configurado para deploy automático
 
-## 🔧 Problema Atual
+## 🚀 Próximos Passos
 
-- **Frontend deploy:** Cloudflare Pages espera arquivos estáticos (HTML, CSS, JS)
-- **Next.js build:** Gera build que precisa de servidor Node.js
-- **Solução:** Configurar `output: 'export'` ou usar Vercel para deploy
+1. **Conectar repositório na Vercel** - Deploy automático
+2. **Testar frontend** - Uma vez deployado
+3. **Implementar funcionalidades** - OAuth, colaboração em tempo real, etc.
 
 ## 📝 Roadmap Próximo
 
-- 🔄 **Resolver deploy frontend** - Export estático ou Vercel
+- 🔄 **Testar deploy Vercel** - Frontend funcionando
 - 🔄 **Habilitar OAuth completo** - GitHub/Google
 - 🔄 **Reativar colaboração em tempo real** - Yjs + WebSocket em DO
 - 🔄 **Snapshots em R2** - E histórico de versões
@@ -113,6 +142,6 @@ npm run dev
 
 ---
 
-**CollabDocs** – Backend funcionando perfeitamente, frontend em configuração final! 🚀
+**CollabDocs** – Backend funcionando perfeitamente, frontend configurado para Vercel! 🚀
 
-> **Nota:** A API está 100% funcional e pode ser testada. O frontend será disponibilizado assim que o deploy estático for configurado.
+> **Nota:** A API está 100% funcional e pode ser testada. O frontend será deployado automaticamente na Vercel assim que você conectar o repositório.
