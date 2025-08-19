@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { signIn, useSession } from 'next-auth/react';
 
 interface LoginPageProps {
   onLogin?: (user: any) => void;
@@ -9,24 +10,20 @@ interface LoginPageProps {
 export function LoginPage({ onLogin }: LoginPageProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { data: session } = useSession();
 
   const handleGitHubLogin = async () => {
     setIsLoading(true);
     setError('');
     
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/github`);
-      const data = await response.json();
-      
-      if (data.success && data.auth_url) {
-        // Redirecionar automaticamente para a URL OAuth
-        window.location.href = data.auth_url;
-      } else {
-        setError('Erro ao obter URL de autenticação');
-      }
+      await signIn('github', { 
+        callbackUrl: '/',
+        redirect: false 
+      });
     } catch (error) {
       console.error('Erro no login GitHub:', error);
-      setError('Erro de conexão com o servidor');
+      setError('Erro ao fazer login com GitHub');
     } finally {
       setIsLoading(false);
     }
@@ -37,18 +34,13 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     setError('');
     
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/google`);
-      const data = await response.json();
-      
-      if (data.success && data.auth_url) {
-        // Redirecionar automaticamente para a URL OAuth
-        window.location.href = data.auth_url;
-      } else {
-        setError('Erro ao obter URL de autenticação');
-      }
+      await signIn('google', { 
+        callbackUrl: '/',
+        redirect: false 
+      });
     } catch (error) {
       console.error('Erro no login Google:', error);
-      setError('Erro de conexão com o servidor');
+      setError('Erro ao fazer login com Google');
     } finally {
       setIsLoading(false);
     }
@@ -75,6 +67,31 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     // Recarregar a página para aplicar as mudanças
     window.location.reload();
   };
+
+  // Se já estiver logado, mostrar mensagem
+  if (session) {
+    return (
+      <div className="bg-white/90 backdrop-blur-md rounded-3xl shadow-2xl border border-white/20 p-8 animate-slide-up">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+            <span className="text-2xl">✅</span>
+          </div>
+          <h2 className="text-3xl font-bold text-gray-900 mb-2">
+            Já está logado!
+          </h2>
+          <p className="text-gray-600 text-lg mb-4">
+            Bem-vindo, {session.user.name}!
+          </p>
+          <button
+            onClick={() => window.location.href = '/'}
+            className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-semibold py-3 px-6 rounded-2xl transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
+          >
+            Ir para o Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white/90 backdrop-blur-md rounded-3xl shadow-2xl border border-white/20 p-8 animate-slide-up">
@@ -154,7 +171,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       <div className="mt-8 text-center">
         <div className="bg-blue-50 rounded-2xl p-4 border border-blue-100">
           <div className="flex items-center justify-center gap-2 text-blue-700 mb-2">
-            <span className="text-lg">��</span>
+            <span className="text-lg">💡</span>
             <span className="font-medium">Dica</span>
           </div>
           <p className="text-blue-600 text-sm">
@@ -168,7 +185,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         <div className="flex items-center justify-center gap-6 text-xs text-gray-500">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-            <span>API Online</span>
+            <span>Auth.js Ativo</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
