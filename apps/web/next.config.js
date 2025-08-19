@@ -1,23 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Configurações de webpack para otimização
-  webpack: (config, { dev, isServer }) => {
-    if (!dev && !isServer) {
-      // Otimizações para produção
-      config.optimization.splitChunks = {
-        chunks: 'all',
-        cacheGroups: {
-          vendor: {
-            test: /[\\/]node_modules[\\/]/,
-            name: 'vendors',
-            chunks: 'all',
-          },
-        },
-      };
-    }
-    return config;
-  },
-  
   experimental: {
     turbo: {
       rules: {
@@ -27,15 +9,13 @@ const nextConfig = {
         },
       },
     },
-    // Otimizações experimentais
-    optimizePackageImports: ['@collab-docs/shared', '@collab-docs/yjs-provider'],
   },
-  
-  transpilePackages: ['@collab-docs/shared', '@collab-docs/yjs-provider'],
-  
-  env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'https://collab-docs.collabdocs.workers.dev',
-    NEXT_PUBLIC_WS_URL: process.env.NEXT_PUBLIC_API_URL || 'https://collab-docs.collabdocs.workers.dev',
+  webpack: (config) => {
+    config.module.rules.push({
+      test: /\.svg$/,
+      use: ['@svgr/webpack'],
+    });
+    return config;
   },
 };
 
