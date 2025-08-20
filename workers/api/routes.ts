@@ -27,104 +27,165 @@ function addCORSHeaders(headers: Record<string, string> = {}): Record<string, st
   };
 }
 
-export async function handleAPI(request: Request, env: Env): Promise<Response> {
-  const url = new URL(request.url);
-  const path = url.pathname.replace('/api', '');
-  const method = request.method;
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    try {
+      const url = new URL(request.url);
+      const path = url.pathname;
+      const method = request.method;
+      
+      console.log(`🌐 ${method} ${path}`);
+      
+      // Handle CORS preflight
+      if (method === 'OPTIONS') {
+        return new Response(null, {
+          status: 200,
+          headers: addCORSHeaders()
+        });
+      }
+      
+      // API routes
+      if (path.startsWith('/api/')) {
+        const apiPath = path.slice(4); // Remove '/api' prefix
+        
+        if (apiPath === '/documents' && method === 'GET') {
+          try {
+            const authenticatedRequest = await authenticateRequest(request, env);
+            return await getDocuments(env, authenticatedRequest.user!);
+          } catch (error) {
+            if (error instanceof Error && error.message === 'Unauthorized') {
+              return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+                status: 401,
+                headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+              });
+            }
+            throw error;
+          }
+        }
+        
+        if (apiPath === '/documents' && method === 'POST') {
+          try {
+            const authenticatedRequest = await authenticateRequest(request, env);
+            return await createDocument(env, authenticatedRequest.user!, await request.json());
+          } catch (error) {
+            if (error instanceof Error && error.message === 'Unauthorized') {
+              return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+                status: 401,
+                headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+              });
+            }
+            throw error;
+          }
+        }
+        
+        if (apiPath.startsWith('/documents/') && method === 'GET') {
+          const documentId = apiPath.split('/')[1];
+          try {
+            const authenticatedRequest = await authenticateRequest(request, env);
+            return await getDocument(env, authenticatedRequest.user!, documentId);
+          } catch (error) {
+            if (error instanceof Error && error.message === 'Unauthorized') {
+              return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+                status: 401,
+                headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+              });
+            }
+            throw error;
+          }
+        }
+        
+        if (apiPath.startsWith('/documents/') && apiPath.endsWith('/snapshot') && method === 'GET') {
+          const documentId = apiPath.split('/')[1];
+          try {
+            const authenticatedRequest = await authenticateRequest(request, env);
+            return await getDocumentSnapshot(env, authenticatedRequest.user!, documentId);
+          } catch (error) {
+            if (error instanceof Error && error.message === 'Unauthorized') {
+              return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+                status: 401,
+                headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+              });
+            }
+            throw error;
+          }
+        }
+        
+        if (apiPath.startsWith('/documents/') && apiPath.endsWith('/permissions') && method === 'POST') {
+          const documentId = apiPath.split('/')[1];
+          try {
+            const authenticatedRequest = await authenticateRequest(request, env);
+            return await updatePermissions(env, authenticatedRequest.user!, documentId, await request.json());
+          } catch (error) {
+            if (error instanceof Error && error.message === 'Unauthorized') {
+              return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+                status: 401,
+                headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+              });
+            }
+            throw error;
+          }
+        }
+        
+        if (apiPath.startsWith('/documents/') && apiPath.endsWith('/history') && method === 'GET') {
+          const documentId = apiPath.split('/')[1];
+          try {
+            const authenticatedRequest = await authenticateRequest(request, env);
+            return await getDocumentHistory(env, authenticatedRequest.user!, documentId);
+          } catch (error) {
+            if (error instanceof Error && error.message === 'Unauthorized') {
+              return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+                status: 401,
+                headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+              });
+            }
+            throw error;
+          }
+        }
+        
+        if (apiPath.startsWith('/documents/') && method === 'PUT') {
+          const documentId = apiPath.split('/')[1];
+          try {
+            const authenticatedRequest = await authenticateRequest(request, env);
+            return await updateDocument(env, authenticatedRequest.user!, documentId, await request.json());
+          } catch (error) {
+            if (error instanceof Error && error.message === 'Unauthorized') {
+              return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+                status: 401,
+                headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+              });
+            }
+            throw error;
+          }
+        }
 
-  // Handle CORS preflight
-  if (method === 'OPTIONS') {
-    return new Response(null, {
-      status: 200,
-      headers: addCORSHeaders()
-    });
-  }
+        return new Response(JSON.stringify({ error: 'Not Found' }), { 
+          status: 404,
+          headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+        });
+      }
 
-  // Authenticate request (except for health checks and API root)
-  const authenticatedRequest = await authenticateRequest(request, env);
-  if (!authenticatedRequest.user && !path.startsWith('/health') && path !== '' && path !== '/') {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), { 
-      status: 401,
-      headers: addCORSHeaders()
-    });
-  }
-
-  try {
-    // Route API requests
-    if (path === '' || path === '/') {
+      return new Response(JSON.stringify({ error: 'Not Found' }), { 
+        status: 404,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    } catch (error) {
+      console.error('API error:', error);
       return new Response(JSON.stringify({ 
-        message: 'CollabDocs API',
-        version: '1.0.0',
-        status: 'running',
-        timestamp: new Date().toISOString(),
-        endpoints: [
-          'GET /api/documents',
-          'POST /api/documents',
-          'GET /api/documents/:id',
-          'GET /api/documents/:id/snapshot',
-          'POST /api/documents/:id/permissions',
-          'GET /api/documents/:id/history'
-        ]
+        error: 'Internal Server Error',
+        message: error instanceof Error ? error.message : 'Unknown error'
       }), { 
-        status: 200,
-        headers: addCORSHeaders()
+        status: 500,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
       });
     }
-    
-    if (path === '/documents' && method === 'GET') {
-      return await getDocuments(env, authenticatedRequest.user!);
-    }
-    
-    if (path === '/documents' && method === 'POST') {
-      return await createDocument(env, authenticatedRequest.user!, await request.json());
-    }
-    
-    if (path.startsWith('/documents/') && method === 'GET') {
-      const documentId = path.split('/')[2];
-      return await getDocument(authenticatedRequest, env, documentId);
-    }
-    
-    if (path.startsWith('/documents/') && path.endsWith('/snapshot') && method === 'GET') {
-      const documentId = path.split('/')[2];
-      return await getDocumentSnapshot(authenticatedRequest, env, documentId);
-    }
-    
-    if (path.startsWith('/documents/') && path.endsWith('/permissions') && method === 'POST') {
-      const documentId = path.split('/')[2];
-      return await updatePermissions(authenticatedRequest, env, documentId);
-    }
-    
-    if (path.startsWith('/documents/') && path.endsWith('/history') && method === 'GET') {
-      const documentId = path.split('/')[2];
-      return await getDocumentHistory(authenticatedRequest, env, documentId);
-    }
-    
-    if (path.startsWith('/documents/') && method === 'PUT') {
-      const documentId = path.split('/')[2];
-      return await updateDocument(authenticatedRequest, env, documentId);
-    }
-
-    return new Response(JSON.stringify({ error: 'Not Found' }), { 
-      status: 404,
-      headers: addCORSHeaders()
-    });
-  } catch (error) {
-    console.error('API error:', error);
-    return new Response(JSON.stringify({ 
-      error: 'Internal Server Error',
-      message: error instanceof Error ? error.message : 'Unknown error'
-    }), { 
-      status: 500,
-      headers: addCORSHeaders()
-    });
   }
-}
+};
 
 async function authenticateRequest(request: Request, env: Env): Promise<AuthenticatedRequest> {
   const authorization = request.headers.get('Authorization');
   if (!authorization?.startsWith('Bearer ')) {
     console.log('⚠️ Sem token de autorização');
-    return request as AuthenticatedRequest;
+    throw new Error('Unauthorized');
   }
 
   const token = authorization.slice(7);
@@ -147,7 +208,7 @@ async function authenticateRequest(request: Request, env: Env): Promise<Authenti
   
   if (!user) {
     console.log('❌ Falha na verificação do token');
-    return request as AuthenticatedRequest;
+    throw new Error('Unauthorized');
   }
   
   console.log('✅ Usuário autenticado:', { id: user.sub, name: user.name });
@@ -338,11 +399,7 @@ async function createDocument(env: Env, user: JWTPayload, data: any): Promise<Re
   }
 }
 
-async function getDocument(request: AuthenticatedRequest, env: Env, documentId: string): Promise<Response> {
-  if (!request.user) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
-  }
-
+async function getDocument(env: Env, user: JWTPayload, documentId: string): Promise<Response> {
   // Check permissions
   const permission = await env.DB.prepare(`
     SELECT p.role FROM permissions p
@@ -350,10 +407,13 @@ async function getDocument(request: AuthenticatedRequest, env: Env, documentId: 
     UNION
     SELECT 'owner' as role FROM documents d
     WHERE d.id = ? AND d.owner_id = ?
-  `).bind(documentId, request.user.sub, documentId, request.user.sub).first();
+  `).bind(documentId, user.sub, documentId, user.sub).first();
 
   if (!permission) {
-    return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 });
+    return new Response(JSON.stringify({ error: 'Forbidden' }), { 
+      status: 403,
+      headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+    });
   }
 
   const document = await env.DB.prepare(`
@@ -365,26 +425,28 @@ async function getDocument(request: AuthenticatedRequest, env: Env, documentId: 
   `).bind(documentId).first();
 
   if (!document) {
-    return new Response(JSON.stringify({ error: 'Document not found' }), { status: 404 });
+    return new Response(JSON.stringify({ error: 'Document not found' }), { 
+      status: 404,
+      headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+    });
   }
 
   return new Response(JSON.stringify({ 
     document,
     permission: permission.role 
   }), {
-    headers: addCORSHeaders()
+    headers: addCORSHeaders({ 'Content-Type': 'application/json' })
   });
 }
 
-async function getDocumentSnapshot(request: AuthenticatedRequest, env: Env, documentId: string): Promise<Response> {
-  if (!request.user) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
-  }
-
+async function getDocumentSnapshot(env: Env, user: JWTPayload, documentId: string): Promise<Response> {
   // Check permissions
-  const hasAccess = await checkDocumentAccess(env, documentId, request.user.sub);
+  const hasAccess = await checkDocumentAccess(env, documentId, user.sub);
   if (!hasAccess) {
-    return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 });
+    return new Response(JSON.stringify({ error: 'Forbidden' }), { 
+      status: 403,
+      headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+    });
   }
 
   const document = await env.DB.prepare(`
@@ -418,8 +480,8 @@ async function getDocumentSnapshot(request: AuthenticatedRequest, env: Env, docu
   });
 }
 
-async function updatePermissions(request: AuthenticatedRequest, env: Env, documentId: string): Promise<Response> {
-  if (!request.user) {
+async function updatePermissions(env: Env, user: JWTPayload, documentId: string, body: { user_id: string; role: string }): Promise<Response> {
+  if (!user) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
   }
 
@@ -428,12 +490,10 @@ async function updatePermissions(request: AuthenticatedRequest, env: Env, docume
     SELECT owner_id FROM documents WHERE id = ?
   `).bind(documentId).first();
 
-  if (!document || document.owner_id !== request.user.sub) {
+  if (!document || document.owner_id !== user.sub) {
     return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 });
   }
 
-  const body = await request.json() as { user_id: string; role: string };
-  
   if (!body.user_id || !['editor', 'viewer'].includes(body.role)) {
     return new Response(JSON.stringify({ error: 'Invalid request' }), { status: 400 });
   }
@@ -451,8 +511,8 @@ async function updatePermissions(request: AuthenticatedRequest, env: Env, docume
   });
 }
 
-async function updateDocument(request: AuthenticatedRequest, env: Env, documentId: string): Promise<Response> {
-  if (!request.user) {
+async function updateDocument(env: Env, user: JWTPayload, documentId: string, body: { content: string; title?: string }): Promise<Response> {
+  if (!user) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
   }
 
@@ -463,14 +523,12 @@ async function updateDocument(request: AuthenticatedRequest, env: Env, documentI
     UNION
     SELECT 'owner' as role FROM documents d
     WHERE d.id = ? AND d.owner_id = ?
-  `).bind(documentId, request.user.sub, documentId, request.user.sub).first();
+  `).bind(documentId, user.sub, documentId, user.sub).first();
 
   if (!permission || (permission.role !== 'owner' && permission.role !== 'editor')) {
     return new Response(JSON.stringify({ error: 'Forbidden - Read-only access' }), { status: 403 });
   }
 
-  const body = await request.json() as { content: string; title?: string };
-  
   if (!body.content) {
     return new Response(JSON.stringify({ error: 'Content is required' }), { status: 400 });
   }
@@ -507,12 +565,12 @@ async function updateDocument(request: AuthenticatedRequest, env: Env, documentI
   });
 }
 
-async function getDocumentHistory(request: AuthenticatedRequest, env: Env, documentId: string): Promise<Response> {
-  if (!request.user) {
+async function getDocumentHistory(env: Env, user: JWTPayload, documentId: string): Promise<Response> {
+  if (!user) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
   }
 
-  const hasAccess = await checkDocumentAccess(env, documentId, request.user.sub);
+  const hasAccess = await checkDocumentAccess(env, documentId, user.sub);
   if (!hasAccess) {
     return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 });
   }

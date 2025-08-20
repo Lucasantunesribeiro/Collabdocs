@@ -1,6 +1,6 @@
 // import { DocumentDurableObject } from './durable-objects/document';
 import { handleAuth } from './auth/oauth';
-import { handleAPI } from './api/routes';
+import apiRoutes from './api/routes';
 
 // export { DocumentDurableObject };
 
@@ -82,7 +82,7 @@ export default {
       }
       // Route API requests
       else if (url.pathname.startsWith('/api')) {
-        response = await handleAPI(request, env);
+        response = await apiRoutes.fetch(request, env);
       }
       // Favicon endpoint
       else if (url.pathname === '/favicon.ico') {

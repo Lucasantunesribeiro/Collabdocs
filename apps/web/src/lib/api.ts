@@ -68,27 +68,18 @@ class ApiService {
 
   // Detectar automaticamente o perfil do usuário logado
   private detectUserProfile(): { name: string; email: string } {
+    // Limpar perfil antigo do localStorage para forçar nova detecção
+    try {
+      localStorage.removeItem('collabdocs_user_profile');
+    } catch (error) {
+      console.log('⚠️ Erro ao limpar perfil antigo:', error);
+    }
+    
     // Tentar detectar o perfil de várias formas
     let userName = '';
     let userEmail = '';
     
-    // 1. Tentar pegar do localStorage (se existir)
-    try {
-      const storedProfile = localStorage.getItem('collabdocs_user_profile');
-      if (storedProfile) {
-        const profile = JSON.parse(storedProfile);
-        if (profile.name && profile.email) {
-          userName = profile.name;
-          userEmail = profile.email;
-          console.log('📱 Perfil detectado do localStorage:', profile);
-          return { name: userName, email: userEmail };
-        }
-      }
-    } catch (error) {
-      console.log('⚠️ Erro ao ler perfil do localStorage:', error);
-    }
-    
-    // 2. Tentar detectar do DOM (se estiver logado)
+    // 1. Tentar detectar do DOM (se estiver logado)
     try {
       // Procurar por elementos que contenham o nome do usuário
       const nameElements = document.querySelectorAll('[data-user-name], .user-name, .profile-name');
@@ -115,7 +106,7 @@ class ApiService {
       console.log('⚠️ Erro ao detectar perfil do DOM:', error);
     }
     
-    // 3. Se não conseguiu detectar, usar valores padrão baseados no token
+    // 2. Se não conseguiu detectar, usar valores padrão baseados no token
     if (!userName) {
       const tokenHash = this.sessionToken?.slice(-8) || 'user';
       userName = `Usuário ${tokenHash}`;
