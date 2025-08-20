@@ -332,7 +332,9 @@ async function getDocuments(env: Env, user: JWTPayload): Promise<Response> {
       ORDER BY d.updated_at DESC
     `);
     
-    const documents = stmt.all(user.sub);
+    const result = await stmt.all(user.sub);
+    const documents = result.results || [];
+    
     console.log('🔍 Documentos encontrados:', documents.length);
     console.log('🔍 Documentos retornados:', documents);
     
@@ -390,7 +392,7 @@ async function createDocument(env: Env, user: JWTPayload, data: any): Promise<Re
       WHERE d.id = ?
     `);
     
-    const document = getStmt.get(documentId);
+    const document = await getStmt.get(documentId);
     
     console.log('✅ Documento criado:', document);
     
