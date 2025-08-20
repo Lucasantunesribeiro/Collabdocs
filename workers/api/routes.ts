@@ -317,18 +317,8 @@ async function getDocuments(env: Env, user: JWTPayload): Promise<Response> {
     console.log('🔍 User.sub value:', user.sub);
     console.log('🔍 User.sub type:', typeof user.sub);
     
-    // Verificar se a coluna content existe na tabela
-    let hasContentColumn = false;
-    try {
-      const schemaCheck = await env.DB.prepare(`
-        SELECT name FROM pragma_table_info('documents') WHERE name = 'content'
-      `).first();
-      hasContentColumn = !!schemaCheck;
-      console.log('🔍 Coluna content existe:', hasContentColumn);
-    } catch (schemaError) {
-      console.log('⚠️ Erro ao verificar schema, assumindo estrutura sem content');
-      hasContentColumn = false;
-    }
+    // Tentar buscar com content, fallback para sem content se falhar
+    let useContentColumn = true;
     
     // Primeiro, vamos testar uma consulta simples
     console.log('🔍 Testando consulta simples...');
@@ -338,23 +328,46 @@ async function getDocuments(env: Env, user: JWTPayload): Promise<Response> {
     const simpleResult = await simpleStmt.first();
     console.log('🔍 Total de documentos na tabela:', simpleResult);
     
-    // Query adaptável baseada na estrutura da tabela
-    const selectFields = hasContentColumn 
-      ? 'id, title, visibility, owner_id, created_at, updated_at, content'
-      : 'id, title, visibility, owner_id, created_at, updated_at';
+    let allDocuments = [];
     
-    console.log('🔍 Buscando documentos com campos:', selectFields);
-    const noParamStmt = env.DB.prepare(`
-      SELECT ${selectFields}
-      FROM documents
-      ORDER BY updated_at DESC
-    `);
-    
-    const noParamResult = await noParamStmt.all();
-    console.log('🔍 Resultado da query:', noParamResult);
+    // Estratégia 1: Tentar SELECT com content
+    try {
+      console.log('🔍 Tentativa 1: SELECT com coluna content...');
+      const stmtWithContent = env.DB.prepare(`
+        SELECT id, title, visibility, owner_id, created_at, updated_at, content
+        FROM documents
+        ORDER BY updated_at DESC
+      `);
+      
+      const resultWithContent = await stmtWithContent.all();
+      allDocuments = resultWithContent.results || [];
+      console.log('✅ SELECT com content executado com sucesso, documentos encontrados:', allDocuments.length);
+      
+    } catch (contentError) {
+      console.log('❌ Falha no SELECT com content:', contentError.message);
+      console.log('🔄 Tentativa 2: SELECT sem coluna content...');
+      
+      try {
+        const stmtWithoutContent = env.DB.prepare(`
+          SELECT id, title, visibility, owner_id, created_at, updated_at
+          FROM documents
+          ORDER BY updated_at DESC
+        `);
+        
+        const resultWithoutContent = await stmtWithoutContent.all();
+        allDocuments = (resultWithoutContent.results || []).map(doc => ({
+          ...doc,
+          content: '' // Adicionar content vazio
+        }));
+        console.log('✅ SELECT sem content executado com sucesso, documentos encontrados:', allDocuments.length);
+        
+      } catch (fallbackError) {
+        console.error('❌ Falha em ambas as estratégias de SELECT:', fallbackError);
+        throw new Error(`Erro ao buscar documentos: ${fallbackError.message}`);
+      }
+    }
     
     // Filtrar no JavaScript em vez de SQL
-    const allDocuments = noParamResult.results || [];
     const userDocuments = allDocuments.filter(doc => 
       doc.visibility === 'public' || doc.owner_id === user.sub
     );
@@ -396,91 +409,73 @@ async function createDocument(env: Env, user: JWTPayload, data: any): Promise<Re
     const now = new Date().toISOString();
     const content = data.content || '';
     
-    // Verificar se a coluna content existe na tabela
-    console.log('🔍 Verificando estrutura da tabela documents...');
-    let hasContentColumn = false;
+    // Tentar INSERT com content primeiro, fallback para sem content se falhar
+    console.log('🔍 Tentando criar documento com coluna content...');
     
+    let document;
+    let result;
+    
+    // Estratégia 1: Tentar INSERT com coluna content
     try {
-      const schemaCheck = await env.DB.prepare(`
-        SELECT name FROM pragma_table_info('documents') WHERE name = 'content'
-      `).first();
-      hasContentColumn = !!schemaCheck;
-      console.log('🔍 Coluna content existe:', hasContentColumn);
-    } catch (schemaError) {
-      console.log('⚠️ Erro ao verificar schema, assumindo estrutura sem content:', schemaError.message);
-      hasContentColumn = false;
-    }
-    
-    let stmt, insertParams;
-    
-    if (hasContentColumn) {
-      // Usar INSERT com coluna content (migração 0002 aplicada)
-      console.log('🔍 Inserindo documento COM coluna content...');
-      stmt = env.DB.prepare(`
+      console.log('🔍 Tentativa 1: INSERT com coluna content...');
+      const stmtWithContent = env.DB.prepare(`
         INSERT INTO documents (id, owner_id, title, visibility, created_at, updated_at, content)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `);
-      insertParams = [documentId, user.sub, data.title, data.visibility || 'private', now, now, content];
-    } else {
-      // Usar INSERT sem coluna content (migração 0002 NÃO aplicada)
-      console.log('🔍 Inserindo documento SEM coluna content...');
-      stmt = env.DB.prepare(`
-        INSERT INTO documents (id, owner_id, title, visibility, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+      
+      result = await stmtWithContent.bind(
+        documentId, user.sub, data.title, data.visibility || 'private', now, now, content
+      ).run();
+      
+      console.log('✅ INSERT com content executado com sucesso:', result);
+      
+      // Buscar documento criado COM content
+      const getStmtWithContent = env.DB.prepare(`
+        SELECT id, title, visibility, owner_id, created_at, updated_at, content
+        FROM documents WHERE id = ?
       `);
-      insertParams = [documentId, user.sub, data.title, data.visibility || 'private', now, now];
-    }
-    
-    console.log('🔍 Parâmetros para INSERT:', {
-      id: documentId,
-      owner_id: user.sub,
-      title: data.title,
-      visibility: data.visibility || 'private',
-      created_at: now,
-      updated_at: now,
-      ...(hasContentColumn && { content: content })
-    });
-    
-    const result = await stmt.bind(...insertParams).run();
-    console.log('🔍 Resultado do INSERT:', result);
-    
-    if (result.changes === 0) {
-      throw new Error('Falha ao criar documento - nenhuma linha inserida');
-    }
-    
-    // Se não há coluna content, atualizar o documento com content em uma segunda query
-    if (!hasContentColumn && content) {
-      console.log('🔄 Tentando atualizar content em query separada...');
+      document = await getStmtWithContent.bind(documentId).first();
+      
+    } catch (contentError) {
+      console.log('❌ Falha no INSERT com content:', contentError.message);
+      console.log('🔄 Tentativa 2: INSERT sem coluna content...');
+      
       try {
-        await env.DB.prepare(`UPDATE documents SET content = ? WHERE id = ?`)
-          .bind(content, documentId).run();
-        console.log('✅ Content atualizado em query separada');
-      } catch (contentError) {
-        console.log('⚠️ Não foi possível salvar content (coluna não existe):', contentError.message);
+        const stmtWithoutContent = env.DB.prepare(`
+          INSERT INTO documents (id, owner_id, title, visibility, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `);
+        
+        result = await stmtWithoutContent.bind(
+          documentId, user.sub, data.title, data.visibility || 'private', now, now
+        ).run();
+        
+        console.log('✅ INSERT sem content executado com sucesso:', result);
+        
+        // Buscar documento criado SEM content
+        const getStmtWithoutContent = env.DB.prepare(`
+          SELECT id, title, visibility, owner_id, created_at, updated_at
+          FROM documents WHERE id = ?
+        `);
+        document = await getStmtWithoutContent.bind(documentId).first();
+        
+        // Adicionar content no objeto de retorno
+        if (document) {
+          document.content = content || '';
+        }
+        
+      } catch (fallbackError) {
+        console.error('❌ Falha em ambas as estratégias de INSERT:', fallbackError);
+        throw new Error(`Erro ao inserir documento: ${fallbackError.message}`);
       }
     }
     
-    // Buscar o documento criado
-    console.log('🔍 Buscando documento criado...');
-    const selectFields = hasContentColumn 
-      ? 'id, title, visibility, owner_id, created_at, updated_at, content'
-      : 'id, title, visibility, owner_id, created_at, updated_at';
-    
-    const getStmt = env.DB.prepare(`
-      SELECT ${selectFields}
-      FROM documents
-      WHERE id = ?
-    `);
-    
-    const document = await getStmt.bind(documentId).first();
+    if (!result || result.changes === 0) {
+      throw new Error('Falha ao criar documento - nenhuma linha inserida');
+    }
     
     if (!document) {
       throw new Error('Documento criado mas não encontrado na busca');
-    }
-    
-    // Garantir que content sempre existe no retorno, mesmo se não foi salvo no banco
-    if (!hasContentColumn) {
-      document.content = content || '';
     }
     
     console.log('✅ Documento criado com sucesso:', document);
