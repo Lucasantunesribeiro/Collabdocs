@@ -32,6 +32,19 @@ export interface UpdateDocumentRequest {
 class ApiService {
   private sessionToken: string | null = null;
   private userProfile: { name: string; email: string } | null = null;
+  
+  // Método para limpar cache forçadamente 
+  public clearCache(): void {
+    this.sessionToken = null;
+    this.userProfile = null;
+    try {
+      localStorage.removeItem('collabdocs_user_profile');
+      localStorage.removeItem('collabdocs_session_token');
+      console.log('[AUTH] 🧹 Cache da API limpo completamente');
+    } catch (error) {
+      console.log('[AUTH] Erro ao limpar cache da API:', error);
+    }
+  }
 
   private getSessionToken(): string {
     // Se não há token de sessão, detectar usuário e gerar token dinâmico
@@ -69,63 +82,115 @@ class ApiService {
     
     console.log('[AUTH] 🔍 Iniciando detecção DINÂMICA do usuário...');
     
-    // 1. PRIORIDADE: Verificar localStorage (dados já salvos e válidos)
+    // 1. SEMPRE LIMPAR localStorage para forçar detecção fresca
     try {
-      const savedProfile = localStorage.getItem('collabdocs_user_profile');
-      if (savedProfile) {
-        const profile = JSON.parse(savedProfile);
-        if (profile.name && profile.email && !profile.name.startsWith('Usuário ') && profile.email.includes('@') && !profile.email.includes('collabdocs.local')) {
-          console.log('[AUTH] ✅ Perfil recuperado do localStorage:', profile);
-          return profile;
-        } else {
-          console.log('[AUTH] ⚠️ Perfil do localStorage é inválido, removendo...');
-          localStorage.removeItem('collabdocs_user_profile');
-        }
-      }
+      localStorage.removeItem('collabdocs_user_profile');
+      localStorage.removeItem('collabdocs_session_token');
+      console.log('[AUTH] 🧹 localStorage limpo para detecção fresca');
     } catch (error) {
-      console.log('[AUTH] Erro ao acessar localStorage:', error);
+      console.log('[AUTH] Erro ao limpar localStorage:', error);
     }
     
-    // 2. Detectar do DOM (dados do Google OAuth na página)
+    // 2. DETECÇÃO AGRESSIVA do DOM e URL (dados do Google OAuth)
     try {
-      // Procurar pelo nome do usuário exibido na interface
-      const nameSelectors = [
-        'h1', 'h2', 'h3', '.user-name', '[data-user-name]', 
-        '.profile-name', '.header-name', '.welcome-name'
-      ];
+      console.log('[AUTH] 🔍 Analisando URL para dados do usuário...');
+      console.log('[AUTH] URL completa:', window.location.href);
+      console.log('[AUTH] Query params:', window.location.search);
       
-      for (const selector of nameSelectors) {
-        const elements = document.querySelectorAll(selector);
-        for (const element of elements) {
+      // A. Primeiro tentar extrair da URL (parâmetros do OAuth)
+      const urlParams = new URLSearchParams(window.location.search);
+      console.log('[AUTH] Parâmetros encontrados:', Array.from(urlParams.entries()));
+      
+      // Verificar por parâmetros comuns do OAuth
+      const possibleUserParams = ['user', 'profile', 'name', 'email', 'userData'];
+      for (const param of possibleUserParams) {
+        const value = urlParams.get(param);
+        if (value) {
+          console.log(`[AUTH] Parâmetro ${param} encontrado:`, value);
+          try {
+            const userData = JSON.parse(decodeURIComponent(value));
+            if (userData.name) userName = userData.name;
+            if (userData.email) userEmail = userData.email;
+            console.log('[AUTH] ✅ Dados extraídos da URL:', { name: userName, email: userEmail });
+          } catch (e) {
+            console.log(`[AUTH] Erro ao parsear ${param}:`, e);
+          }
+        }
+      }
+      
+      // B. Busca EXTENSIVA no DOM por nome do usuário
+      if (!userName) {
+        console.log('[AUTH] 🔍 Busca extensiva no DOM...');
+        
+        // Buscar em TODOS os elementos da página
+        const allElements = document.querySelectorAll('*');
+        console.log(`[AUTH] Analisando ${allElements.length} elementos do DOM...`);
+        
+        for (let i = 0; i < allElements.length; i++) {
+          const element = allElements[i];
           const text = element.textContent?.trim();
-          // Procurar por padrões como "Bem-vindo, Nome" ou só "Nome"
-          if (text && text.length > 2 && !text.includes('CollabDocs') && !text.includes('Dashboard')) {
-            // Extrair nome de textos como "Bem-vindo, Lightzin FPS"
-            const nameMatch = text.match(/(?:Bem-vindo,?\s+)?([A-Za-z0-9\s]+)$/);
-            if (nameMatch && nameMatch[1] && nameMatch[1].trim().length > 2) {
-              userName = nameMatch[1].trim();
-              console.log('[AUTH] ✅ Nome detectado do DOM:', userName);
+          
+          if (text && text.length > 2 && text.length < 100) {
+            // Padrões específicos para nomes de usuário
+            const patterns = [
+              /Bem-vindo,?\s+([A-Za-z0-9\s]+)/i,
+              /Welcome,?\s+([A-Za-z0-9\s]+)/i,
+              /Hello,?\s+([A-Za-z0-9\s]+)/i,
+              /Olá,?\s+([A-Za-z0-9\s]+)/i,
+              /^([A-Za-z0-9\s]{3,30})$/  // Nome simples
+            ];
+            
+            for (const pattern of patterns) {
+              const match = text.match(pattern);
+              if (match && match[1]) {
+                const potentialName = match[1].trim();
+                // Filtrar nomes que não sejam válidos
+                if (!potentialName.includes('CollabDocs') && 
+                    !potentialName.includes('Dashboard') && 
+                    !potentialName.includes('Document') &&
+                    !potentialName.includes('Criar') &&
+                    !potentialName.includes('Bem-vindo') &&
+                    potentialName.length > 2 && 
+                    potentialName.length < 50) {
+                  userName = potentialName;
+                  console.log('[AUTH] ✅ Nome detectado no DOM:', userName, 'elemento:', element.tagName);
+                  break;
+                }
+              }
+            }
+          }
+          
+          if (userName) break;
+        }
+      }
+      
+      // C. Buscar email no DOM (dados ocultos, atributos, etc)
+      if (!userEmail) {
+        const emailSelectors = [
+          '[data-user-email]', '[data-email]', '.user-email', '.profile-email',
+          'input[type="email"]', 'input[name="email"]', '[title*="@"]'
+        ];
+        
+        for (const selector of emailSelectors) {
+          const elements = document.querySelectorAll(selector);
+          for (const element of elements) {
+            const text = element.textContent?.trim() || 
+                        (element as any).value?.trim() || 
+                        element.getAttribute('data-email') ||
+                        element.getAttribute('title');
+            
+            if (text && text.includes('@') && text.includes('.')) {
+              userEmail = text;
+              console.log('[AUTH] ✅ Email detectado do DOM:', userEmail);
               break;
             }
           }
+          if (userEmail) break;
         }
-        if (userName) break;
       }
       
-      // Procurar por email (menos comum na interface, mas pode estar em elementos ocultos)
-      if (!userEmail) {
-        const emailElements = document.querySelectorAll('[data-user-email], .user-email, input[type="email"]');
-        for (const element of emailElements) {
-          const text = element.textContent?.trim() || (element as HTMLInputElement).value?.trim();
-          if (text && text.includes('@') && text.includes('.')) {
-            userEmail = text;
-            console.log('[AUTH] ✅ Email detectado do DOM:', userEmail);
-            break;
-          }
-        }
-      }
     } catch (error) {
-      console.log('[AUTH] Erro ao detectar do DOM:', error);
+      console.log('[AUTH] Erro na detecção agressiva:', error);
     }
     
     // 3. Gerar email baseado no nome se não encontrou
@@ -136,23 +201,31 @@ class ApiService {
       console.log('[AUTH] 📧 Email gerado baseado no nome:', userEmail);
     }
     
-    // 4. Fallback para dados padrão apenas se não conseguiu detectar nada
-    if (!userName || !userEmail) {
-      console.log('[AUTH] ⚠️ Não foi possível detectar usuário, usando fallback');
-      userName = 'Usuário Anônimo';
-      userEmail = 'anonimo@collabdocs.local';
+    // 4. Fallback apenas se REALMENTE não conseguiu detectar nada
+    if (!userName && !userEmail) {
+      console.log('[AUTH] ❌ FALHA TOTAL na detecção - usando fallback temporário');
+      userName = `Usuario-${Date.now()}`;
+      userEmail = `user-${Date.now()}@temp.local`;
+    } else if (!userEmail && userName) {
+      // Gerar email baseado no nome se só temos o nome
+      const emailName = userName.toLowerCase().replace(/\s+/g, '.');
+      userEmail = `${emailName}@gmail.com`;
+      console.log('[AUTH] 📧 Email gerado baseado no nome:', userEmail);
+    } else if (!userName && userEmail) {
+      // Gerar nome baseado no email se só temos o email
+      userName = userEmail.split('@')[0].replace(/\./g, ' ');
+      console.log('[AUTH] 👤 Nome gerado baseado no email:', userName);
     }
     
-    // Salvar perfil detectado no localStorage para próximas sessões
+    // NÃO SALVAR no localStorage para forçar detecção sempre fresca
     const detectedProfile = { name: userName, email: userEmail };
-    try {
-      localStorage.setItem('collabdocs_user_profile', JSON.stringify(detectedProfile));
-      console.log('[AUTH] ✅ Perfil salvo no localStorage:', detectedProfile);
-    } catch (error) {
-      console.log('[AUTH] Erro ao salvar perfil:', error);
-    }
+    console.log('[AUTH] 🎯 PERFIL FINAL (SEM CACHE):', detectedProfile);
+    console.log('[AUTH] 🔍 Fonte dos dados:', {
+      nomeDetectado: !!userName,
+      emailDetectado: !!userEmail,
+      timestamp: new Date().toISOString()
+    });
     
-    console.log('[AUTH] 🎯 Perfil final detectado:', detectedProfile);
     return detectedProfile;
   }
 
