@@ -389,7 +389,7 @@ async function createDocument(env: Env, user: JWTPayload, data: any): Promise<Re
       updated_at: now
     });
     
-    const result = stmt.run(
+    const result = await stmt.run(
       documentId,           // id
       user.sub,            // owner_id
       data.title,           // title
