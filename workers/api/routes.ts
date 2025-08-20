@@ -115,14 +115,45 @@ async function authenticateRequest(request: Request, env: Env): Promise<Authenti
 
 async function verifyJWT(token: string, env: Env): Promise<JWTPayload | null> {
   try {
-    // Para MVP, vamos usar uma verificação simplificada
+    // Para MVP, vamos criar usuários únicos baseados no token
     // Em produção, usar uma biblioteca JWT compatível com Workers
     
-    // Simular um usuário válido para demonstração
+    // Gerar um ID único baseado no hash do token
+    const userId = `user-${token.slice(0, 8)}`;
+    
+    // Verificar se o usuário já existe no banco
+    let user = await env.DB.prepare(`
+      SELECT id, email, name, avatar_url, provider, provider_id, created_at
+      FROM users WHERE id = ?
+    `).bind(userId).first();
+    
+    if (!user) {
+      // Criar novo usuário se não existir
+      const userEmail = `${userId}@collabdocs.local`;
+      const userName = `Usuário ${token.slice(0, 4)}`;
+      
+      await env.DB.prepare(`
+        INSERT INTO users (id, email, name, provider, provider_id, created_at)
+        VALUES (?, ?, ?, 'demo', ?, ?)
+      `).bind(userId, userEmail, userName, token.slice(0, 8), new Date().toISOString()).run();
+      
+      user = {
+        id: userId,
+        email: userEmail,
+        name: userName,
+        avatar_url: null,
+        provider: 'demo',
+        provider_id: token.slice(0, 8),
+        created_at: new Date().toISOString()
+      };
+    }
+    
     return {
-      sub: 'demo-user',
-      name: 'Usuário Demo',
-      email: 'demo@collabdocs.com',
+      sub: user.id,
+      name: user.name,
+      email: user.email,
+      avatar_url: user.avatar_url,
+      provider: user.provider as 'github' | 'google',
       iat: Date.now() / 1000,
       exp: Date.now() / 1000 + 3600, // 1 hora
     } as JWTPayload;
@@ -207,11 +238,6 @@ Este é um documento em branco. Comece a digitar para criar seu conteúdo.
     VALUES (?, ?, 'owner', ?)
   `).bind(documentId, request.user.sub, now).run();
 
-  // Get user info for the response
-  const userInfo = await env.DB.prepare(`
-    SELECT name, avatar_url FROM users WHERE id = ?
-  `).bind(request.user.sub).first();
-
   const document: Document = {
     id: documentId,
     owner_id: request.user.sub,
@@ -220,8 +246,8 @@ Este é um documento em branco. Comece a digitar para criar seu conteúdo.
     visibility: (body.visibility || 'private') as 'private' | 'public',
     created_at: now,
     updated_at: now,
-    owner_name: userInfo?.name || 'Usuário Demo',
-    owner_avatar_url: userInfo?.avatar_url,
+    owner_name: request.user.name,
+    owner_avatar_url: request.user.avatar_url,
   };
 
   return new Response(JSON.stringify({ document }), {

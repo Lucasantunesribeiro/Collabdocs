@@ -41,6 +41,14 @@ export interface UpdateDocumentRequest {
 }
 
 class ApiService {
+  private generateUniqueToken(): string {
+    // Gerar um token único para cada sessão do usuário
+    // Em produção, isso viria do sistema de autenticação real
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2);
+    return `user-${timestamp}-${random}`;
+  }
+
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
@@ -55,10 +63,12 @@ class ApiService {
       ...options,
     };
 
-    // Add demo user token for development and production (MVP)
+    // Gerar token único para cada usuário (MVP)
+    // Em produção, isso viria do sistema de autenticação real
+    const uniqueToken = this.generateUniqueToken();
     config.headers = {
       ...config.headers,
-      'Authorization': 'Bearer demo-token',
+      'Authorization': `Bearer ${uniqueToken}`,
     };
 
     try {

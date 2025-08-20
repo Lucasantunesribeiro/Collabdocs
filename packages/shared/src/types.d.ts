@@ -11,10 +11,14 @@ export interface Document {
     id: string;
     owner_id: string;
     title: string;
+    content: string;
     visibility: 'private' | 'public';
     created_at: string;
     updated_at: string;
     last_snapshot_r2_key?: string;
+    // Campos adicionais para informações do proprietário
+    owner_name?: string;
+    owner_avatar_url?: string;
 }
 export interface Snapshot {
     id: string;
