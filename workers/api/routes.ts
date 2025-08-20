@@ -57,6 +57,10 @@ export default {
           return await getDocuments(env, request);
         }
         
+        if (apiPath === '/debug' && method === 'GET') {
+          return await debugTables(env, request);
+        }
+        
         return new Response(JSON.stringify({ error: 'Not Found' }), { 
           status: 404,
           headers: addCORSHeaders({ 'Content-Type': 'application/json' })
@@ -257,7 +261,7 @@ async function getDocuments(env: Env, request: Request): Promise<Response> {
     
     try {
       // Tentar SELECT com content primeiro (filtrando por usuário e documentos públicos)
-      console.log('[GET] Tentando SELECT com content...');
+      console.log('[GET] Tentando SELECT com content para usuário:', currentUserId);
       const stmtWithContent = env.DB.prepare(`
         SELECT id, title, visibility, owner_id, created_at, updated_at, content
         FROM documents
@@ -268,6 +272,7 @@ async function getDocuments(env: Env, request: Request): Promise<Response> {
       const resultContent = await stmtWithContent.bind(currentUserId || '').all();
       documents = resultContent.results || [];
       console.log('[GET] ✅ SELECT com content executado, documentos:', documents.length);
+      console.log('[GET] Documentos filtrados:', documents.map(d => ({id: d.id, title: d.title, visibility: d.visibility, owner_id: d.owner_id})));
       
     } catch (contentError) {
       console.log('[GET] ❌ SELECT com content falhou:', contentError.message);
@@ -370,6 +375,59 @@ async function getDocuments(env: Env, request: Request): Promise<Response> {
     return new Response(JSON.stringify({ 
       error: 'Erro ao buscar documentos',
       message: error instanceof Error ? error.message : 'Erro desconhecido'
+    }), {
+      status: 500,
+      headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+    });
+  }
+}
+
+async function debugTables(env: Env, request: Request): Promise<Response> {
+  try {
+    console.log('[DEBUG] Verificando tabelas...');
+    
+    const results = {
+      documents: [],
+      users: [],
+      migrations: []
+    };
+    
+    // Verificar documentos
+    try {
+      const docsStmt = env.DB.prepare('SELECT * FROM documents ORDER BY created_at DESC LIMIT 5');
+      const docsResult = await docsStmt.all();
+      results.documents = docsResult.results || [];
+    } catch (e) {
+      results.documents = { error: e.message };
+    }
+    
+    // Verificar usuários
+    try {
+      const usersStmt = env.DB.prepare('SELECT * FROM users ORDER BY created_at DESC LIMIT 5');
+      const usersResult = await usersStmt.all();
+      results.users = usersResult.results || [];
+    } catch (e) {
+      results.users = { error: e.message };
+    }
+    
+    // Verificar migrações
+    try {
+      const migrationsStmt = env.DB.prepare('SELECT name FROM sqlite_master WHERE type="table"');
+      const migrationsResult = await migrationsStmt.all();
+      results.migrations = migrationsResult.results || [];
+    } catch (e) {
+      results.migrations = { error: e.message };
+    }
+    
+    return new Response(JSON.stringify(results, null, 2), {
+      status: 200,
+      headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+    });
+    
+  } catch (error) {
+    return new Response(JSON.stringify({ 
+      error: 'Debug failed',
+      message: error instanceof Error ? error.message : 'Unknown error'
     }), {
       status: 500,
       headers: addCORSHeaders({ 'Content-Type': 'application/json' })
