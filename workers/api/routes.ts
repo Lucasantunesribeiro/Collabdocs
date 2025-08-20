@@ -325,30 +325,33 @@ async function getDocuments(env: Env, user: JWTPayload): Promise<Response> {
     const simpleResult = await simpleStmt.first();
     console.log('🔍 Total de documentos na tabela:', simpleResult);
     
-    // Agora a consulta principal
-    const stmt = env.DB.prepare(`
+    // Agora vamos testar uma consulta sem parâmetros
+    console.log('🔍 Testando consulta sem parâmetros...');
+    const noParamStmt = env.DB.prepare(`
       SELECT 
-        d.id,
-        d.title,
-        d.visibility,
-        d.owner_id,
-        d.created_at,
-        d.updated_at
-      FROM documents d
-      WHERE d.visibility = 'public' OR d.owner_id = ?
-      ORDER BY d.updated_at DESC
+        id,
+        title,
+        visibility,
+        owner_id,
+        created_at,
+        updated_at
+      FROM documents
+      ORDER BY updated_at DESC
     `);
     
-    console.log('🔍 Executando consulta SQL...');
-    const result = await stmt.all(user.sub);
-    console.log('🔍 Resultado da consulta:', result);
+    const noParamResult = await noParamStmt.all();
+    console.log('🔍 Resultado sem parâmetros:', noParamResult);
     
-    const documents = result.results || [];
+    // Filtrar no JavaScript em vez de SQL
+    const allDocuments = noParamResult.results || [];
+    const userDocuments = allDocuments.filter(doc => 
+      doc.visibility === 'public' || doc.owner_id === user.sub
+    );
     
-    console.log('🔍 Documentos encontrados:', documents.length);
-    console.log('🔍 Documentos retornados:', documents);
+    console.log('🔍 Documentos filtrados para usuário:', userDocuments.length);
+    console.log('🔍 Documentos retornados:', userDocuments);
     
-    return new Response(JSON.stringify(documents), {
+    return new Response(JSON.stringify(userDocuments), {
       status: 200,
       headers: addCORSHeaders({ 'Content-Type': 'application/json' })
     });
