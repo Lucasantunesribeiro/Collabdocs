@@ -371,13 +371,13 @@ async function createDocument(env: Env, user: JWTPayload, data: any): Promise<Re
     
     const documentId = crypto.randomUUID();
     const now = new Date().toISOString();
+    const content = data.content || '';
     
-    // Primeiro, vamos testar uma inserção simples com apenas as colunas essenciais
-    console.log('🔍 Testando inserção com colunas essenciais...');
+    console.log('🔍 Inserindo documento com todas as colunas...');
     
     const stmt = env.DB.prepare(`
-      INSERT INTO documents (id, owner_id, title, visibility, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO documents (id, owner_id, title, visibility, created_at, updated_at, content)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
     
     console.log('🔍 Parâmetros para INSERT:', {
@@ -386,17 +386,19 @@ async function createDocument(env: Env, user: JWTPayload, data: any): Promise<Re
       title: data.title,
       visibility: data.visibility || 'private',
       created_at: now,
-      updated_at: now
+      updated_at: now,
+      content: content
     });
     
-    const result = await stmt.run(
+    const result = await stmt.bind(
       documentId,           // id
       user.sub,            // owner_id
       data.title,           // title
       data.visibility || 'private', // visibility
       now,                 // created_at
-      now                  // updated_at
-    );
+      now,                 // updated_at
+      content              // content
+    ).run();
     
     console.log('🔍 Resultado do INSERT:', result);
     
@@ -404,10 +406,10 @@ async function createDocument(env: Env, user: JWTPayload, data: any): Promise<Re
       throw new Error('Falha ao criar documento - nenhuma linha inserida');
     }
     
-    // Buscar o documento criado com consulta simples
+    // Buscar o documento criado com todas as colunas
     console.log('🔍 Buscando documento criado...');
     const getStmt = env.DB.prepare(`
-      SELECT id, title, visibility, owner_id, created_at, updated_at
+      SELECT id, title, visibility, owner_id, created_at, updated_at, content
       FROM documents
       WHERE id = ?
     `);
