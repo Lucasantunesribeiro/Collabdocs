@@ -16,17 +16,35 @@ function atob(str: string): string {
   }
 }
 
+// Helper function para adicionar headers CORS
+function addCORSHeaders(headers: Record<string, string> = {}): Record<string, string> {
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    ...headers
+  };
+}
+
 export async function handleAPI(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname.replace('/api', '');
   const method = request.method;
+
+  // Handle CORS preflight
+  if (method === 'OPTIONS') {
+    return new Response(null, {
+      status: 200,
+      headers: addCORSHeaders()
+    });
+  }
 
   // Authenticate request (except for health checks and API root)
   const authenticatedRequest = await authenticateRequest(request, env);
   if (!authenticatedRequest.user && !path.startsWith('/health') && path !== '' && path !== '/') {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), { 
       status: 401,
-      headers: { 'Content-Type': 'application/json' }
+      headers: addCORSHeaders()
     });
   }
 
@@ -48,7 +66,7 @@ export async function handleAPI(request: Request, env: Env): Promise<Response> {
         ]
       }), { 
         status: 200,
-        headers: { 'Content-Type': 'application/json' }
+        headers: addCORSHeaders()
       });
     }
     
@@ -87,7 +105,7 @@ export async function handleAPI(request: Request, env: Env): Promise<Response> {
 
     return new Response(JSON.stringify({ error: 'Not Found' }), { 
       status: 404,
-      headers: { 'Content-Type': 'application/json' }
+      headers: addCORSHeaders()
     });
   } catch (error) {
     console.error('API error:', error);
@@ -96,7 +114,7 @@ export async function handleAPI(request: Request, env: Env): Promise<Response> {
       message: error instanceof Error ? error.message : 'Unknown error'
     }), { 
       status: 500,
-      headers: { 'Content-Type': 'application/json' }
+      headers: addCORSHeaders()
     });
   }
 }
@@ -104,11 +122,21 @@ export async function handleAPI(request: Request, env: Env): Promise<Response> {
 async function authenticateRequest(request: Request, env: Env): Promise<AuthenticatedRequest> {
   const authorization = request.headers.get('Authorization');
   if (!authorization?.startsWith('Bearer ')) {
+    console.log('⚠️ Sem token de autorização');
     return request as AuthenticatedRequest;
   }
 
   const token = authorization.slice(7);
+  console.log('🔑 Token recebido:', token.slice(0, 20) + '...');
+  
   const user = await verifyJWT(token, env);
+  
+  if (!user) {
+    console.log('❌ Falha na verificação do token');
+    return request as AuthenticatedRequest;
+  }
+  
+  console.log('✅ Usuário autenticado:', { id: user.sub, name: user.name });
   
   return Object.assign(request, { user }) as AuthenticatedRequest;
 }
@@ -203,7 +231,7 @@ async function getDocuments(request: AuthenticatedRequest, env: Env): Promise<Re
   })));
 
   return new Response(JSON.stringify({ documents: result.results }), {
-    headers: { 'Content-Type': 'application/json' }
+    headers: addCORSHeaders()
   });
 }
 
@@ -278,7 +306,7 @@ Este é um documento em branco. Comece a digitar para criar seu conteúdo.
 
   return new Response(JSON.stringify({ document }), {
     status: 201,
-    headers: { 'Content-Type': 'application/json' }
+    headers: addCORSHeaders()
   });
 }
 
@@ -316,7 +344,7 @@ async function getDocument(request: AuthenticatedRequest, env: Env, documentId: 
     document,
     permission: permission.role 
   }), {
-    headers: { 'Content-Type': 'application/json' }
+    headers: addCORSHeaders()
   });
 }
 
@@ -337,7 +365,7 @@ async function getDocumentSnapshot(request: AuthenticatedRequest, env: Env, docu
 
   if (!document?.last_snapshot_r2_key) {
     return new Response(JSON.stringify({ snapshot: null }), {
-      headers: { 'Content-Type': 'application/json' }
+      headers: addCORSHeaders()
     });
   }
 
@@ -358,7 +386,7 @@ async function getDocumentSnapshot(request: AuthenticatedRequest, env: Env, docu
   
   return new Response(JSON.stringify({ error: 'Snapshots temporarily disabled' }), { 
     status: 501,
-    headers: { 'Content-Type': 'application/json' }
+    headers: addCORSHeaders()
   });
 }
 
@@ -391,7 +419,7 @@ async function updatePermissions(request: AuthenticatedRequest, env: Env, docume
   `).bind(documentId, body.user_id, body.role).run();
 
   return new Response(JSON.stringify({ success: true }), {
-    headers: { 'Content-Type': 'application/json' }
+    headers: addCORSHeaders()
   });
 }
 
@@ -447,7 +475,7 @@ async function updateDocument(request: AuthenticatedRequest, env: Env, documentI
     document,
     message: 'Document updated successfully'
   }), {
-    headers: { 'Content-Type': 'application/json' }
+    headers: addCORSHeaders()
   });
 }
 
@@ -471,7 +499,7 @@ async function getDocumentHistory(request: AuthenticatedRequest, env: Env, docum
   `).bind(documentId).all();
 
   return new Response(JSON.stringify({ snapshots: snapshots.results }), {
-    headers: { 'Content-Type': 'application/json' }
+    headers: addCORSHeaders()
   });
 }
 
