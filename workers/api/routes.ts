@@ -307,6 +307,10 @@ async function verifyJWT(token: string, env: Env, userProfile?: any): Promise<JW
     return jwtPayload as JWTPayload;
   } catch (error) {
     console.error('❌ Erro na verificação JWT:', error);
+    console.error('❌ Stack trace completo:', error.stack);
+    console.error('❌ Tipo do erro:', typeof error);
+    console.error('❌ Error name:', error.name);
+    console.error('❌ Error message:', error.message);
     return null;
   }
 }

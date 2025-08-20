@@ -1,6 +1,7 @@
 // import { DocumentDurableObject } from './durable-objects/document';
 import { handleAuth } from './auth/oauth';
 import apiRoutes from './api/routes';
+import simpleRoutes from './api/simple-routes';
 
 // export { DocumentDurableObject };
 
@@ -82,7 +83,8 @@ export default {
       }
       // Route API requests
       else if (url.pathname.startsWith('/api')) {
-        response = await apiRoutes.fetch(request, env);
+        // Usar versão simplificada para resolver erro 500
+        response = await simpleRoutes.fetch(request, env);
       }
       // Favicon endpoint
       else if (url.pathname === '/favicon.ico') {
@@ -92,10 +94,36 @@ export default {
       else if (url.pathname === '/health') {
         response = new Response(JSON.stringify({ 
           status: 'ok', 
-          timestamp: new Date().toISOString() 
+          timestamp: new Date().toISOString(),
+          version: '1.2.0-debug'
         }), {
           headers: { 'Content-Type': 'application/json' }
         });
+      }
+      // Debug endpoint para testar conexão com D1
+      else if (url.pathname === '/debug/db') {
+        try {
+          const testQuery = await env.DB.prepare('SELECT COUNT(*) as total FROM documents').first();
+          response = new Response(JSON.stringify({
+            success: true,
+            message: 'D1 conectado com sucesso',
+            totalDocuments: testQuery.total,
+            timestamp: new Date().toISOString()
+          }), {
+            headers: { 'Content-Type': 'application/json' }
+          });
+        } catch (dbError) {
+          response = new Response(JSON.stringify({
+            success: false,
+            error: 'Erro ao conectar com D1',
+            details: dbError.message,
+            stack: dbError.stack,
+            timestamp: new Date().toISOString()
+          }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
       }
       // Default response
       else {
