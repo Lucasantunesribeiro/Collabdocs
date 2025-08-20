@@ -390,20 +390,17 @@ async function createDocument(env: Env, user: JWTPayload, data: any): Promise<Re
       throw new Error('Falha ao criar documento');
     }
     
-    // Buscar o documento criado com informações do proprietário
+    // Buscar o documento criado (sem JOIN complexo)
     const getStmt = env.DB.prepare(`
       SELECT 
-        d.id,
-        d.title,
-        d.visibility,
-        d.owner_id,
-        u.name as owner_name,
-        u.avatar_url as owner_avatar_url,
-        d.created_at,
-        d.updated_at
-      FROM documents d
-      LEFT JOIN users u ON d.owner_id = u.id
-      WHERE d.id = ?
+        id,
+        title,
+        visibility,
+        owner_id,
+        created_at,
+        updated_at
+      FROM documents
+      WHERE id = ?
     `);
     
     const document = await getStmt.first(documentId);
