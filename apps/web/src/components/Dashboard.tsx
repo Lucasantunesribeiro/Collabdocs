@@ -167,10 +167,10 @@ export function Dashboard({ user }: DashboardProps) {
                     {user?.name?.charAt(0) || 'U'}
                   </div>
                   <div>
-                    <div className="font-semibold text-gray-900" data-user-name={user?.name}>
+                    <div className="font-semibold text-gray-900" data-user-name={user?.name || ''}>
                       {user?.name || 'Usuário'}
                     </div>
-                    <div className="text-sm text-gray-500" data-user-email={user?.email}>
+                    <div className="text-sm text-gray-500" data-user-email={user?.email || ''}>
                       {user?.email || 'no-email@example.com'}
                     </div>
                   </div>

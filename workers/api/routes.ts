@@ -72,11 +72,11 @@ export async function handleAPI(request: Request, env: Env): Promise<Response> {
     }
     
     if (path === '/documents' && method === 'GET') {
-      return await getDocuments(authenticatedRequest, env);
+      return await getDocuments(env, authenticatedRequest.user!);
     }
     
     if (path === '/documents' && method === 'POST') {
-      return await createDocument(authenticatedRequest, env);
+      return await createDocument(env, authenticatedRequest.user!, await request.json());
     }
     
     if (path.startsWith('/documents/') && method === 'GET') {
@@ -242,112 +242,100 @@ async function verifyJWT(token: string, env: Env, userProfile?: any): Promise<JW
   }
 }
 
-async function getDocuments(request: AuthenticatedRequest, env: Env): Promise<Response> {
-  if (!request.user) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+async function getDocuments(env: Env, user: JWTPayload): Promise<Response> {
+  try {
+    console.log('📋 Buscando documentos para usuário:', user);
+    
+    // Buscar documentos: públicos OU privados do usuário autenticado
+    const stmt = env.DB.prepare(`
+      SELECT 
+        d.id,
+        d.title,
+        d.visibility,
+        d.owner_id,
+        u.name as owner_name,
+        u.avatar_url as owner_avatar_url,
+        d.created_at,
+        d.updated_at
+      FROM documents d
+      LEFT JOIN users u ON d.owner_id = u.id
+      WHERE d.visibility = 'public' OR d.owner_id = ?
+      ORDER BY d.updated_at DESC
+    `);
+    
+    const documents = stmt.all(user.sub);
+    console.log('🔍 Documentos encontrados:', documents.length);
+    console.log('🔍 Documentos retornados:', documents);
+    
+    return new Response(JSON.stringify(documents), {
+      status: 200,
+      headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+    });
+  } catch (error) {
+    console.error('❌ Erro ao buscar documentos:', error);
+    return new Response(JSON.stringify({ error: 'Erro interno do servidor' }), {
+      status: 500,
+      headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+    });
   }
-
-  console.log('📋 Buscando documentos para usuário:', { 
-    id: request.user.sub, 
-    name: request.user.name 
-  });
-
-  // Corrigir a lógica de segurança: usuários só veem documentos públicos OU documentos privados que eles criaram
-  const result = await env.DB.prepare(`
-    SELECT d.*, u.name as owner_name, u.avatar_url as owner_avatar_url
-    FROM documents d
-    LEFT JOIN users u ON d.owner_id = u.id
-    WHERE d.visibility = 'public' OR d.owner_id = ?
-    ORDER BY d.updated_at DESC
-  `).bind(request.user.sub).all();
-
-  console.log('🔍 Documentos encontrados:', result.results.length);
-  console.log('🔍 Documentos retornados:', result.results.map(d => ({
-    id: d.id,
-    title: d.title,
-    visibility: d.visibility,
-    owner_id: d.owner_id,
-    owner_name: d.owner_name
-  })));
-
-  return new Response(JSON.stringify({ documents: result.results }), {
-    headers: addCORSHeaders()
-  });
 }
 
-async function createDocument(request: AuthenticatedRequest, env: Env): Promise<Response> {
-  if (!request.user) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+async function createDocument(env: Env, user: JWTPayload, data: any): Promise<Response> {
+  try {
+    console.log('📝 Criando documento:', data);
+    
+    const documentId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    
+    const stmt = env.DB.prepare(`
+      INSERT INTO documents (id, title, visibility, owner_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    
+    const result = stmt.run(
+      documentId,
+      data.title,
+      data.visibility || 'private',
+      user.sub,
+      now,
+      now
+    );
+    
+    if (result.changes === 0) {
+      throw new Error('Falha ao criar documento');
+    }
+    
+    // Buscar o documento criado com informações do proprietário
+    const getStmt = env.DB.prepare(`
+      SELECT 
+        d.id,
+        d.title,
+        d.visibility,
+        d.owner_id,
+        u.name as owner_name,
+        u.avatar_url as owner_avatar_url,
+        d.created_at,
+        d.updated_at
+      FROM documents d
+      LEFT JOIN users u ON d.owner_id = u.id
+      WHERE d.id = ?
+    `);
+    
+    const document = getStmt.get(documentId);
+    
+    console.log('✅ Documento criado:', document);
+    
+    return new Response(JSON.stringify(document), {
+      status: 201,
+      headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+    });
+  } catch (error) {
+    console.error('❌ Erro ao criar documento:', error);
+    return new Response(JSON.stringify({ error: 'Erro interno do servidor' }), {
+      status: 500,
+      headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+    });
   }
-
-  const body = await request.json() as { title: string; content?: string; visibility?: 'private' | 'public' };
-  
-  if (!body.title) {
-    return new Response(JSON.stringify({ error: 'Title is required' }), { status: 400 });
-  }
-
-  const documentId = crypto.randomUUID();
-  const now = new Date().toISOString();
-  
-  // Default content for new documents
-  const defaultContent = body.content || `# ${body.title}
-
-## Bem-vindo ao CollabDocs! 🎉
-
-Este é um documento em branco. Comece a digitar para criar seu conteúdo.
-
-### ✨ Funcionalidades Disponíveis
-
-- **Edição em tempo real** - Veja as alterações instantaneamente
-- **Salvamento automático** - Seu trabalho é preservado automaticamente
-- **Histórico de versões** - Acompanhe todas as mudanças
-- **Colaboração simultânea** - Múltiplos usuários podem editar juntos
-
-### 🚀 Como Usar
-
-1. **Digite** no editor abaixo
-2. **Clique em Salvar** para persistir suas alterações
-3. **Compartilhe** o documento com sua equipe
-4. **Colabore** em tempo real
-
-*Este documento foi criado automaticamente. Experimente editar o conteúdo!*`;
-
-  // Create document
-  await env.DB.prepare(`
-    INSERT INTO documents (id, owner_id, title, content, visibility, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).bind(
-    documentId,
-    request.user.sub,
-    body.title,
-    defaultContent,
-    body.visibility || 'private',
-    now,
-    now
-  ).run();
-
-  // Add owner permission
-  await env.DB.prepare(`
-    INSERT INTO permissions (document_id, user_id, role, granted_at)
-    VALUES (?, ?, 'owner', ?)
-  `).bind(documentId, request.user.sub, now).run();
-
-  const document: Document = {
-    id: documentId,
-    owner_id: request.user.sub,
-    title: body.title,
-    content: defaultContent,
-    visibility: (body.visibility || 'private') as 'private' | 'public',
-    created_at: now,
-    updated_at: now,
-    owner_name: request.user.name,
-    owner_avatar_url: request.user.avatar_url,
-  };
-
-  return new Response(JSON.stringify({ document }), {
-    status: 201,
-    headers: addCORSHeaders()
-  });
 }
 
 async function getDocument(request: AuthenticatedRequest, env: Env, documentId: string): Promise<Response> {

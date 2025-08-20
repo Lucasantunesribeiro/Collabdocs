@@ -69,8 +69,8 @@ class ApiService {
   // Detectar automaticamente o perfil do usuário logado
   private detectUserProfile(): { name: string; email: string } {
     // Tentar detectar o perfil de várias formas
-    let userName = 'Usuário';
-    let userEmail = 'usuario@collabdocs.local';
+    let userName = '';
+    let userEmail = '';
     
     // 1. Tentar pegar do localStorage (se existir)
     try {
@@ -116,9 +116,13 @@ class ApiService {
     }
     
     // 3. Se não conseguiu detectar, usar valores padrão baseados no token
-    if (userName === 'Usuário') {
+    if (!userName) {
       const tokenHash = this.sessionToken?.slice(-8) || 'user';
       userName = `Usuário ${tokenHash}`;
+    }
+    
+    if (!userEmail) {
+      userEmail = 'usuario@collabdocs.local';
     }
     
     // Salvar o perfil detectado para uso futuro
