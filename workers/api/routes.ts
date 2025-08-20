@@ -129,7 +129,20 @@ async function authenticateRequest(request: Request, env: Env): Promise<Authenti
   const token = authorization.slice(7);
   console.log('🔑 Token recebido:', token.slice(0, 20) + '...');
   
-  const user = await verifyJWT(token, env);
+  // Extrair perfil do usuário dos headers
+  const userProfileHeader = request.headers.get('X-User-Profile');
+  let userProfile = null;
+  
+  if (userProfileHeader) {
+    try {
+      userProfile = JSON.parse(userProfileHeader);
+      console.log('👤 Perfil extraído dos headers:', userProfile);
+    } catch (error) {
+      console.log('⚠️ Erro ao parsear perfil do usuário:', error);
+    }
+  }
+  
+  const user = await verifyJWT(token, env, userProfile);
   
   if (!user) {
     console.log('❌ Falha na verificação do token');
@@ -141,7 +154,7 @@ async function authenticateRequest(request: Request, env: Env): Promise<Authenti
   return Object.assign(request, { user }) as AuthenticatedRequest;
 }
 
-async function verifyJWT(token: string, env: Env): Promise<JWTPayload | null> {
+async function verifyJWT(token: string, env: Env, userProfile?: any): Promise<JWTPayload | null> {
   try {
     // Para MVP, vamos criar usuários únicos baseados no token
     // Em produção, usar uma biblioteca JWT compatível com Workers
@@ -154,6 +167,7 @@ async function verifyJWT(token: string, env: Env): Promise<JWTPayload | null> {
     console.log('🔍 Verificando token:', token.slice(0, 20) + '...');
     console.log('🔍 Token hash gerado:', tokenHash);
     console.log('🔍 User ID gerado:', userId);
+    console.log('👤 Perfil recebido:', userProfile);
     
     // Verificar se o usuário já existe no banco
     let user = await env.DB.prepare(`
@@ -163,8 +177,8 @@ async function verifyJWT(token: string, env: Env): Promise<JWTPayload | null> {
     
     if (!user) {
       // Criar novo usuário se não existir
-      const userEmail = `${userId}@collabdocs.local`;
-      const userName = `Usuário ${tokenHash.slice(0, 6)}`;
+      const userEmail = userProfile?.email || `${userId}@collabdocs.local`;
+      const userName = userProfile?.name || `Usuário ${tokenHash.slice(0, 6)}`;
       
       console.log('🆕 Criando novo usuário:', { id: userId, name: userName, email: userEmail });
       
@@ -184,6 +198,21 @@ async function verifyJWT(token: string, env: Env): Promise<JWTPayload | null> {
       };
     } else {
       console.log('✅ Usuário encontrado:', { id: user.id, name: user.name });
+      
+      // Atualizar nome e email se o perfil mudou
+      if (userProfile && (userProfile.name !== user.name || userProfile.email !== user.email)) {
+        console.log('🔄 Atualizando perfil do usuário:', { 
+          old: { name: user.name, email: user.email },
+          new: { name: userProfile.name, email: userProfile.email }
+        });
+        
+        await env.DB.prepare(`
+          UPDATE users SET name = ?, email = ? WHERE id = ?
+        `).bind(userProfile.name, userProfile.email, userId).run();
+        
+        user.name = userProfile.name;
+        user.email = userProfile.email;
+      }
     }
     
     const jwtPayload = {

@@ -42,6 +42,7 @@ export interface UpdateDocumentRequest {
 
 class ApiService {
   private sessionToken: string | null = null;
+  private userProfile: { name: string; email: string } | null = null;
 
   private generateUniqueToken(): string {
     // Gerar um token único para cada sessão do usuário
@@ -55,7 +56,15 @@ class ApiService {
     // Se não há token de sessão, criar um novo
     if (!this.sessionToken) {
       this.sessionToken = this.generateUniqueToken();
+      
+      // Simular perfil do usuário (em produção viria do sistema de auth)
+      this.userProfile = {
+        name: 'Lucas Antunes', // Nome real do perfil
+        email: 'lucas.afvr@gmail.com' // Email real do perfil
+      };
+      
       console.log('🔑 Nova sessão criada com token:', this.sessionToken);
+      console.log('👤 Perfil do usuário:', this.userProfile);
     }
     return this.sessionToken;
   }
@@ -80,6 +89,7 @@ class ApiService {
     config.headers = {
       ...config.headers,
       'Authorization': `Bearer ${sessionToken}`,
+      'X-User-Profile': JSON.stringify(this.userProfile), // Enviar perfil do usuário
     };
 
     try {
