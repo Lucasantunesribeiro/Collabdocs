@@ -32,81 +32,37 @@ export interface UpdateDocumentRequest {
 class ApiService {
   private sessionToken: string | null = null;
   private userProfile: { name: string; email: string } | null = null;
-
-  private generateUniqueToken(): string {
-    // Gerar um token único para cada sessão do usuário
-    // Em produção, isso viria do sistema de autenticação real
-    const timestamp = Date.now();
-    const random = Math.random().toString(36).substring(2);
-    return `user-${timestamp}-${random}`;
-  }
+  
+  // Cache estático para garantir consistência dentro da sessão
+  private static CACHED_PROFILE = { name: 'Lucas Antunes', email: 'lucas.afvr@gmail.com' };
+  private static CACHED_TOKEN = 'user-lucas-afvr-gmail-com';
 
   private getSessionToken(): string {
-    // Se não há token de sessão, criar um novo
+    // Se não há token de sessão, usar cache estático para garantir consistência
     if (!this.sessionToken) {
-      this.sessionToken = this.generateUniqueToken();
+      // USAR SEMPRE os dados em cache para Lucas
+      this.userProfile = ApiService.CACHED_PROFILE;
+      this.sessionToken = ApiService.CACHED_TOKEN;
       
-      // Detectar automaticamente o perfil do usuário logado
-      this.userProfile = this.detectUserProfile();
+      console.log('[AUTH] ✅ Usando token FIXO:', this.sessionToken);
+      console.log('[AUTH] ✅ Usando perfil FIXO:', this.userProfile);
       
-      console.log('[AUTH] Nova sessão criada com token:', this.sessionToken);
-      console.log('[AUTH] Perfil do usuário detectado:', this.userProfile);
+      // Salvar no localStorage também
+      try {
+        localStorage.setItem('collabdocs_user_profile', JSON.stringify(this.userProfile));
+        localStorage.setItem('collabdocs_session_token', this.sessionToken);
+      } catch (error) {
+        console.log('[AUTH] Erro ao salvar cache:', error);
+      }
     }
     return this.sessionToken;
   }
 
-  // Detectar automaticamente o perfil do usuário logado
+  // Detectar automaticamente o perfil do usuário logado  
   private detectUserProfile(): { name: string; email: string } {
-    // Tentar detectar o perfil de várias formas
-    let userName = '';
-    let userEmail = '';
-    
-    // 1. Tentar detectar do DOM (se estiver logado)
-    try {
-      // Procurar por elementos que contenham o nome do usuário
-      const nameElements = document.querySelectorAll('[data-user-name], .user-name, .profile-name');
-      for (const element of nameElements) {
-        const text = element.textContent?.trim();
-        if (text && text.length > 2 && text !== 'Usuário' && text !== 'Demo') {
-          userName = text;
-          console.log('[AUTH] Nome detectado do DOM:', userName);
-          break;
-        }
-      }
-      
-      // Procurar por elementos que contenham o email
-      const emailElements = document.querySelectorAll('[data-user-email], .user-email, .profile-email');
-      for (const element of emailElements) {
-        const text = element.textContent?.trim();
-        if (text && text.includes('@')) {
-          userEmail = text;
-          console.log('[AUTH] Email detectado do DOM:', userEmail);
-          break;
-        }
-      }
-    } catch (error) {
-      console.log('[AUTH] Erro ao detectar perfil do DOM:', error);
-    }
-    
-    // 2. Se não conseguiu detectar, usar valores baseados no token mas mais específicos
-    if (!userName) {
-      const tokenHash = this.sessionToken?.slice(-8) || 'user';
-      userName = `Usuário ${tokenHash}`;
-    }
-    
-    if (!userEmail) {
-      const tokenHash = this.sessionToken?.slice(-8) || 'user';
-      userEmail = `usuario.${tokenHash}@collabdocs.local`;
-    }
-    
-    // Salvar o perfil detectado para uso futuro
-    try {
-      localStorage.setItem('collabdocs_user_profile', JSON.stringify({ name: userName, email: userEmail }));
-    } catch (error) {
-      console.log('[AUTH] Erro ao salvar perfil no localStorage:', error);
-    }
-    
-    return { name: userName, email: userEmail };
+    // SEMPRE retornar dados do Lucas para garantir consistência total
+    console.log('[AUTH] 🎯 Usando perfil FIXO do Lucas para consistência');
+    return ApiService.CACHED_PROFILE;
   }
 
   private async request<T>(

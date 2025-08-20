@@ -102,19 +102,31 @@ async function createDocument(env: Env, request: Request): Promise<Response> {
     }
 
     const token = authorization.slice(7);
-    const tokenHash = token.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12);
-    const userId = `user-${tokenHash}`;
     
     // Extrair perfil real do usuário do header
     let userProfile = null;
+    let userId = '';
+    
     try {
       const profileHeader = request.headers.get('X-User-Profile');
       if (profileHeader) {
         userProfile = JSON.parse(profileHeader);
         console.log('[CREATE] Perfil do usuário extraído:', userProfile);
+        
+        // Usar email como base para ID consistente
+        if (userProfile.email && userProfile.email.includes('@')) {
+          const emailHash = userProfile.email.replace('@', '-').replace(/\./g, '-');
+          userId = `user-${emailHash}`;
+        }
       }
     } catch (e) {
       console.log('[CREATE] Erro ao extrair perfil:', e.message);
+    }
+    
+    // Fallback para token hash se não tiver email
+    if (!userId) {
+      const tokenHash = token.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12);
+      userId = `user-${tokenHash}`;
     }
     
     console.log('[CREATE] User ID gerado:', userId);
@@ -249,11 +261,34 @@ async function getDocuments(env: Env, request: Request): Promise<Response> {
     // Extrair usuário do token para filtrar documentos
     const authorization = request.headers.get('Authorization');
     let currentUserId = null;
+    let currentUserProfile = null;
     
     if (authorization?.startsWith('Bearer ')) {
       const token = authorization.slice(7);
-      const tokenHash = token.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12);
-      currentUserId = `user-${tokenHash}`;
+      
+      // Extrair perfil do usuário atual do header
+      try {
+        const profileHeader = request.headers.get('X-User-Profile');
+        if (profileHeader) {
+          currentUserProfile = JSON.parse(profileHeader);
+          console.log('[GET] Perfil do usuário atual:', currentUserProfile);
+          
+          // Usar email como base para ID consistente
+          if (currentUserProfile.email && currentUserProfile.email.includes('@')) {
+            const emailHash = currentUserProfile.email.replace('@', '-').replace(/\./g, '-');
+            currentUserId = `user-${emailHash}`;
+          }
+        }
+      } catch (e) {
+        console.log('[GET] Erro ao extrair perfil:', e.message);
+      }
+      
+      // Fallback para token hash se não tiver email
+      if (!currentUserId) {
+        const tokenHash = token.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12);
+        currentUserId = `user-${tokenHash}`;
+      }
+      
       console.log('[GET] Usuário autenticado:', currentUserId);
     }
     
@@ -294,17 +329,6 @@ async function getDocuments(env: Env, request: Request): Promise<Response> {
       console.log('[GET] ✅ SELECT sem content executado, documentos:', documents.length);
     }
     
-    // Extrair perfil do usuário atual do header
-    let currentUserProfile = null;
-    try {
-      const profileHeader = request.headers.get('X-User-Profile');
-      if (profileHeader) {
-        currentUserProfile = JSON.parse(profileHeader);
-        console.log('[GET] Perfil do usuário atual:', currentUserProfile);
-      }
-    } catch (e) {
-      console.log('[GET] Erro ao extrair perfil:', e.message);
-    }
 
     // Buscar informações dos proprietários da tabela users
     const ownerIds = [...new Set(documents.map(doc => doc.owner_id).filter(Boolean))];
