@@ -116,7 +116,9 @@ export function Dashboard({ user }: DashboardProps) {
             size="sm"
             icon={sidebarOpen ? X : Menu}
             onClick={() => setSidebarOpen(!sidebarOpen)}
-          />
+          >
+            {' '}
+          </Button>
         </div>
       </div>
 
