@@ -373,18 +373,18 @@ async function createDocument(env: Env, user: JWTPayload, data: any): Promise<Re
     const now = new Date().toISOString();
     
     const stmt = env.DB.prepare(`
-      INSERT INTO documents (id, title, visibility, owner_id, content, created_at, updated_at)
+      INSERT INTO documents (id, owner_id, title, visibility, created_at, updated_at, content)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
     
     const result = stmt.run(
-      documentId,
-      data.title,
-      data.visibility || 'private',
-      user.sub,
-      data.content || '', // Adicionar conteúdo ou string vazia
-      now,
-      now
+      documentId,           // id
+      user.sub,            // owner_id
+      data.title,           // title
+      data.visibility || 'private', // visibility
+      now,                 // created_at
+      now,                 // updated_at
+      data.content || ''   // content
     );
     
     if (result.changes === 0) {
