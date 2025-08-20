@@ -2,6 +2,26 @@
 
 import { useState, useEffect } from 'react';
 import { apiService } from '@/lib/api';
+import { Button } from './ui/Button';
+import { Card, CardContent } from './ui/Card';
+import { Alert } from './ui/Alert';
+import { 
+  Bold, 
+  Italic, 
+  List, 
+  ListOrdered, 
+  Quote, 
+  Code, 
+  Link, 
+  Image, 
+  Save,
+  Users,
+  Clock,
+  FileText,
+  CheckCircle,
+  AlertCircle,
+  Loader2
+} from 'lucide-react';
 
 interface CollaborativeEditorProps {
   documentId: string;
@@ -10,7 +30,6 @@ interface CollaborativeEditorProps {
 
 export function CollaborativeEditor({ documentId, initialContent }: CollaborativeEditorProps) {
   const [content, setContent] = useState(initialContent);
-
   const [isTyping, setIsTyping] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date>(new Date());
@@ -119,176 +138,238 @@ export function CollaborativeEditor({ documentId, initialContent }: Collaborativ
     return `há ${diffDays} dia${diffDays > 1 ? 's' : ''}`;
   };
 
-  const getSaveStatusColor = () => {
+  const getSaveStatusIcon = () => {
     switch (saveStatus) {
-      case 'saved': return 'text-green-600';
-      case 'saving': return 'text-blue-600';
-      case 'error': return 'text-red-600';
-      default: return 'text-gray-600';
+      case 'saved': return <CheckCircle className="w-4 h-4" />;
+      case 'saving': return <Loader2 className="w-4 h-4 animate-spin" />;
+      case 'error': return <AlertCircle className="w-4 h-4" />;
+      default: return <FileText className="w-4 h-4" />;
     }
   };
 
-  const getSaveStatusIcon = () => {
+  const getSaveStatusColor = () => {
     switch (saveStatus) {
-      case 'saved': return '✅';
-      case 'saving': return '⏳';
-      case 'error': return '❌';
-      default: return '💾';
+      case 'saved': return 'text-success-600';
+      case 'saving': return 'text-primary-600';
+      case 'error': return 'text-error-600';
+      default: return 'text-text-600';
+    }
+  };
+
+  const getSaveStatusText = () => {
+    switch (saveStatus) {
+      case 'saved': return 'Salvo';
+      case 'saving': return 'Salvando...';
+      case 'error': return 'Erro ao salvar';
+      default: return 'Não salvo';
     }
   };
 
   return (
-    <div className="space-y-6">
-      {/* Toolbar */}
-      <div className="bg-gray-50 rounded-2xl p-4 border border-gray-200/50">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <button className="p-2 text-gray-600 hover:text-gray-800 hover:bg-white rounded-lg transition-all duration-200 group">
-              <svg className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
-            <button className="p-2 text-gray-600 hover:text-gray-800 hover:bg-white rounded-lg transition-all duration-200 group">
-              <svg className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-            <button className="p-2 text-gray-600 hover:text-gray-800 hover:bg-white rounded-lg transition-all duration-200 group">
-              <svg className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zM21 5a2 2 0 00-2-2h-4a2 2 0 00-2 2v12a2 2 0 004 4z" />
-              </svg>
-            </button>
-          </div>
-
-          <div className="flex items-center gap-4">
-            {/* Indicador de digitação */}
-            {isTyping && (
-              <div className="flex items-center gap-2 text-sm text-gray-500">
-                <div className="flex space-x-1">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                </div>
-                <span>Digitando...</span>
-              </div>
-            )}
-
-            {/* Status de salvamento */}
-            <div className={`flex items-center gap-2 text-sm ${getSaveStatusColor()}`}>
-              <span className="text-lg">{getSaveStatusIcon()}</span>
-              <span>
-                {saveStatus === 'saved' && 'Salvo'}
-                {saveStatus === 'saving' && 'Salvando...'}
-                {saveStatus === 'error' && 'Erro ao salvar'}
-              </span>
+    <div className="min-h-screen bg-background-50">
+      {/* Toolbar Fixa */}
+      <div className="sticky top-0 z-40 bg-white border-b border-text-200 shadow-soft">
+        <div className="max-w-7xl mx-auto px-4 py-3">
+          <div className="flex items-center justify-between">
+            {/* Ferramentas de Formatação */}
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="sm" icon={Bold} />
+              <Button variant="ghost" size="sm" icon={Italic} />
+              <div className="w-px h-6 bg-text-200 mx-2"></div>
+              <Button variant="ghost" size="sm" icon={List} />
+              <Button variant="ghost" size="sm" icon={ListOrdered} />
+              <div className="w-px h-6 bg-text-200 mx-2"></div>
+              <Button variant="ghost" size="sm" icon={Quote} />
+              <Button variant="ghost" size="sm" icon={Code} />
+              <Button variant="ghost" size="sm" icon={Link} />
+              <Button variant="ghost" size="sm" icon={Image} />
             </div>
 
-            {/* Botão de salvar manual */}
-            <button
-              onClick={handleManualSave}
-              disabled={isSaving || !isDirty}
-              className={`px-4 py-2 rounded-xl font-medium transition-all duration-200 flex items-center gap-2 ${
-                isDirty && !isSaving
-                  ? 'bg-blue-500 hover:bg-blue-600 text-white shadow-lg hover:shadow-xl'
-                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-              }`}
-            >
-              {isSaving ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  Salvando...
-                </>
-              ) : (
-                <>
-                  <span className="text-lg">💾</span>
-                  Salvar
-                </>
+            {/* Status e Ações */}
+            <div className="flex items-center gap-4">
+              {/* Indicador de digitação */}
+              {isTyping && (
+                <div className="flex items-center gap-2 text-sm text-text-500">
+                  <div className="flex space-x-1">
+                    <div className="w-2 h-2 bg-primary-500 rounded-full animate-bounce"></div>
+                    <div className="w-2 h-2 bg-primary-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                    <div className="w-2 h-2 bg-primary-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                  </div>
+                  <span>Digitando...</span>
+                </div>
               )}
-            </button>
+
+              {/* Status de salvamento */}
+              <div className={`flex items-center gap-2 text-sm ${getSaveStatusColor()}`}>
+                {getSaveStatusIcon()}
+                <span>{getSaveStatusText()}</span>
+              </div>
+
+              {/* Botão de salvar manual */}
+              <Button
+                onClick={handleManualSave}
+                disabled={isSaving || !isDirty}
+                variant={isDirty && !isSaving ? 'primary' : 'secondary'}
+                size="sm"
+                icon={Save}
+              >
+                {isSaving ? 'Salvando...' : 'Salvar'}
+              </Button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Editor */}
-      <div className="relative">
-        <textarea
-          value={content}
-          onChange={handleContentChange}
-          className="w-full min-h-[600px] p-6 bg-white border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 resize-none font-mono text-gray-800 leading-relaxed"
-          placeholder="Comece a digitar seu documento..."
-        />
+      {/* Área de Edição */}
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+          {/* Editor Principal */}
+          <div className="lg:col-span-3">
+            <Card>
+              <CardContent className="p-0">
+                <textarea
+                  value={content}
+                  onChange={handleContentChange}
+                  className="w-full min-h-[calc(100vh-300px)] p-8 bg-white border-0 rounded-xl focus:outline-none focus:ring-0 resize-none font-mono text-text-800 leading-relaxed text-base"
+                  placeholder="Comece a digitar seu documento..."
+                />
+              </CardContent>
+            </Card>
+          </div>
 
-        {/* Overlay de colaboração */}
-        <div className="absolute top-4 right-4">
-          <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200/50 p-4">
-            <h4 className="text-sm font-semibold text-gray-800 mb-3">Colaboradores Online</h4>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
-                  <span className="text-white text-xs">👤</span>
+          {/* Sidebar de Colaboração */}
+          <div className="lg:col-span-1 space-y-6">
+            {/* Colaboradores Online */}
+            <Card>
+              <CardContent>
+                <div className="flex items-center gap-2 mb-4">
+                  <Users className="w-5 h-5 text-text-600" />
+                  <h4 className="font-medium text-text-900">Colaboradores Online</h4>
                 </div>
-                <div className="text-xs">
-                  <div className="font-medium text-gray-800">Você</div>
-                  <div className="text-gray-500">Editando...</div>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
+                      <span className="text-sm font-medium text-primary-600">V</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-text-900">Você</p>
+                      <p className="text-xs text-text-500">Editando...</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-success-100 rounded-full flex items-center justify-center">
+                      <span className="text-sm font-medium text-success-600">J</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-text-900">João Silva</p>
+                      <p className="text-xs text-text-500">Visualizando</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-warning-100 rounded-full flex items-center justify-center">
+                      <span className="text-sm font-medium text-warning-600">M</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-text-900">Maria Santos</p>
+                      <p className="text-xs text-text-500">Editando...</p>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
-                  <span className="text-white text-xs">👤</span>
+              </CardContent>
+            </Card>
+
+            {/* Estatísticas do Documento */}
+            <Card>
+              <CardContent>
+                <div className="flex items-center gap-2 mb-4">
+                  <FileText className="w-5 h-5 text-text-600" />
+                  <h4 className="font-medium text-text-900">Estatísticas</h4>
                 </div>
-                <div className="text-xs">
-                  <div className="font-medium text-gray-800">João Silva</div>
-                  <div className="text-gray-500">Visualizando</div>
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-text-600">Caracteres:</span>
+                    <span className="font-medium text-text-900">{content.length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-text-600">Palavras:</span>
+                    <span className="font-medium text-text-900">{content.split(' ').length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-text-600">Linhas:</span>
+                    <span className="font-medium text-text-900">{content.split('\n').length}</span>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center">
-                  <span className="text-white text-xs">👤</span>
+              </CardContent>
+            </Card>
+
+            {/* Status de Salvamento */}
+            <Card>
+              <CardContent>
+                <div className="flex items-center gap-2 mb-4">
+                  <Clock className="w-5 h-5 text-text-600" />
+                  <h4 className="font-medium text-text-900">Status</h4>
                 </div>
-                <div className="text-xs">
-                  <div className="font-medium text-gray-800">Maria Santos</div>
-                  <div className="text-gray-500">Editando...</div>
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-text-600">Status:</span>
+                    <span className={`font-medium ${isDirty ? 'text-warning-600' : 'text-success-600'}`}>
+                      {isDirty ? 'Não salvo' : 'Salvo'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-text-600">Último salvamento:</span>
+                    <span className="font-medium text-text-900">{formatTimeAgo(lastSaved)}</span>
+                  </div>
                 </div>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>
 
       {/* Footer do Editor */}
-      <div className="bg-gray-50 rounded-2xl p-4 border border-gray-200/50">
-        <div className="flex items-center justify-between text-sm text-gray-600">
-          <div className="flex items-center gap-4">
-            <span>📝 {content.length} caracteres</span>
-            <span>📊 {content.split(' ').length} palavras</span>
-            <span>📄 {content.split('\n').length} linhas</span>
-          </div>
+      <div className="bg-white border-t border-text-200 py-4">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="flex items-center justify-between text-sm text-text-600">
+            <div className="flex items-center gap-6">
+              <span className="flex items-center gap-2">
+                <FileText className="w-4 h-4" />
+                {content.length} caracteres
+              </span>
+              <span className="flex items-center gap-2">
+                <Users className="w-4 h-4" />
+                {content.split(' ').length} palavras
+              </span>
+              <span className="flex items-center gap-2">
+                <Clock className="w-4 h-4" />
+                {content.split('\n').length} linhas
+              </span>
+            </div>
 
-          <div className="flex items-center gap-4">
-            <span className={`flex items-center gap-2 ${isDirty ? 'text-orange-600' : 'text-green-600'}`}>
-              {isDirty ? '🔄' : '💾'} {isDirty ? 'Não salvo' : 'Salvo'}
-            </span>
-            <span>🕒 Último salvamento: {formatTimeAgo(lastSaved)}</span>
+            <div className="flex items-center gap-6">
+              <span className={`flex items-center gap-2 ${isDirty ? 'text-warning-600' : 'text-success-600'}`}>
+                {isDirty ? <AlertCircle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
+                {isDirty ? 'Não salvo' : 'Salvo'}
+              </span>
+              <span className="flex items-center gap-2">
+                <Clock className="w-4 h-4" />
+                Último salvamento: {formatTimeAgo(lastSaved)}
+              </span>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Dicas de Colaboração */}
-      <div className="bg-blue-50 rounded-2xl p-6 border border-blue-100">
-        <div className="flex items-start gap-4">
-          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-            <span className="text-blue-600 text-sm">💡</span>
-          </div>
-          <div>
-            <h4 className="font-semibold text-blue-800 mb-2">Dicas para Colaboração Eficiente</h4>
-            <ul className="text-sm text-blue-700 space-y-1">
-              <li>• Use o botão "Salvar" para persistir suas alterações</li>
-              <li>• O salvamento automático acontece após 2 segundos sem digitação</li>
-              <li>• Comunique-se com sua equipe sobre mudanças significativas</li>
-              <li>• Use Markdown para formatação avançada</li>
-            </ul>
-          </div>
-        </div>
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        <Alert type="info" title="Dicas para Colaboração Eficiente">
+          <ul className="text-sm space-y-1 mt-2">
+            <li>• Use o botão "Salvar" para persistir suas alterações</li>
+            <li>• O salvamento automático acontece após 2 segundos sem digitação</li>
+            <li>• Comunique-se com sua equipe sobre mudanças significativas</li>
+            <li>• Use Markdown para formatação avançada</li>
+          </ul>
+        </Alert>
       </div>
     </div>
   );

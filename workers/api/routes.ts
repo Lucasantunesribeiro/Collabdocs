@@ -136,12 +136,14 @@ async function getDocuments(request: AuthenticatedRequest, env: Env): Promise<Re
     return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
   }
 
+  // Corrigir a lógica de segurança: usuários só veem documentos públicos OU documentos privados que eles criaram
   const result = await env.DB.prepare(`
-    SELECT d.* FROM documents d
-    LEFT JOIN permissions p ON d.id = p.document_id
-    WHERE d.owner_id = ? OR p.user_id = ?
+    SELECT d.*, u.name as owner_name, u.avatar_url as owner_avatar_url
+    FROM documents d
+    LEFT JOIN users u ON d.owner_id = u.id
+    WHERE d.visibility = 'public' OR d.owner_id = ?
     ORDER BY d.updated_at DESC
-  `).bind(request.user.sub, request.user.sub).all();
+  `).bind(request.user.sub).all();
 
   return new Response(JSON.stringify({ documents: result.results }), {
     headers: { 'Content-Type': 'application/json' }
@@ -205,6 +207,11 @@ Este é um documento em branco. Comece a digitar para criar seu conteúdo.
     VALUES (?, ?, 'owner', ?)
   `).bind(documentId, request.user.sub, now).run();
 
+  // Get user info for the response
+  const userInfo = await env.DB.prepare(`
+    SELECT name, avatar_url FROM users WHERE id = ?
+  `).bind(request.user.sub).first();
+
   const document: Document = {
     id: documentId,
     owner_id: request.user.sub,
@@ -213,6 +220,8 @@ Este é um documento em branco. Comece a digitar para criar seu conteúdo.
     visibility: (body.visibility || 'private') as 'private' | 'public',
     created_at: now,
     updated_at: now,
+    owner_name: userInfo?.name || 'Usuário Demo',
+    owner_avatar_url: userInfo?.avatar_url,
   };
 
   return new Response(JSON.stringify({ document }), {
@@ -240,8 +249,11 @@ async function getDocument(request: AuthenticatedRequest, env: Env, documentId: 
   }
 
   const document = await env.DB.prepare(`
-    SELECT id, owner_id, title, content, visibility, created_at, updated_at, last_snapshot_r2_key 
-    FROM documents WHERE id = ?
+    SELECT d.id, d.owner_id, d.title, d.content, d.visibility, d.created_at, d.updated_at, d.last_snapshot_r2_key,
+           u.name as owner_name, u.avatar_url as owner_avatar_url
+    FROM documents d
+    LEFT JOIN users u ON d.owner_id = u.id
+    WHERE d.id = ?
   `).bind(documentId).first();
 
   if (!document) {

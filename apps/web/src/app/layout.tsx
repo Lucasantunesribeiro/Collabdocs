@@ -3,7 +3,11 @@ import { AuthProvider } from '@/context/AuthProvider';
 import './globals.css';
 import { Metadata } from 'next';
 
-const inter = Inter({ subsets: ['latin'] });
+const inter = Inter({ 
+  subsets: ['latin'],
+  variable: '--font-inter',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'CollabDocs - Editor Colaborativo',
@@ -19,8 +23,8 @@ interface RootLayoutProps {
 
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
-    <html lang="pt-BR">
-      <body className={inter.className}>
+    <html lang="pt-BR" className={inter.variable}>
+      <body className="font-sans antialiased">
         <AuthProvider>
           {children}
         </AuthProvider>

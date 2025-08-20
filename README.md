@@ -155,12 +155,6 @@ npm run dev
 - ✅ **Persistência no banco** - Coluna `content` adicionada à tabela `documents`
 - ✅ **API real integrada** - Frontend agora se comunica com o backend real
 
-## 🚀 Próximos Passos
-
-1. **Aplicar migration do banco** - Execute `scripts/apply-migration-0002.ps1`
-2. **Testar funcionalidades corrigidas** - Salvamento e separação de documentos
-3. **Conectar repositório na Vercel** - Deploy automático
-4. **Implementar funcionalidades avançadas** - OAuth, colaboração em tempo real, etc.
 
 ## 🔧 Correções Implementadas (v2.0)
 

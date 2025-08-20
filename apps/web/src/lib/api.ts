@@ -24,6 +24,9 @@ export interface Document {
   updated_at: string;
   visibility: 'private' | 'public';
   owner_id: string;
+  // Campos adicionais para informações do proprietário
+  owner_name?: string;
+  owner_avatar_url?: string;
 }
 
 export interface CreateDocumentRequest {
