@@ -88,7 +88,7 @@ async function createDocument(env: Env, request: Request): Promise<Response> {
     const data = await request.json();
     console.log('[CREATE] Dados recebidos:', data);
     
-    // Extrair usuário do token (versão simplificada)
+    // Extrair usuário do token e perfil
     const authorization = request.headers.get('Authorization');
     if (!authorization?.startsWith('Bearer ')) {
       return new Response(JSON.stringify({ error: 'Token necessário' }), {
@@ -101,7 +101,44 @@ async function createDocument(env: Env, request: Request): Promise<Response> {
     const tokenHash = token.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12);
     const userId = `user-${tokenHash}`;
     
+    // Extrair perfil real do usuário do header
+    let userProfile = null;
+    try {
+      const profileHeader = request.headers.get('X-User-Profile');
+      if (profileHeader) {
+        userProfile = JSON.parse(profileHeader);
+        console.log('[CREATE] Perfil do usuário extraído:', userProfile);
+      }
+    } catch (e) {
+      console.log('[CREATE] Erro ao extrair perfil:', e.message);
+    }
+    
     console.log('[CREATE] User ID gerado:', userId);
+    
+    // Salvar/atualizar perfil do usuário se disponível
+    if (userProfile?.name) {
+      try {
+        console.log('[CREATE] Salvando perfil do usuário...');
+        const upsertUserStmt = env.DB.prepare(`
+          INSERT OR REPLACE INTO users (id, name, email, avatar_url, provider, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `);
+        
+        await upsertUserStmt.bind(
+          userId,
+          userProfile.name,
+          userProfile.email || '',
+          userProfile.avatar_url || '',
+          userProfile.provider || 'unknown',
+          new Date().toISOString(),
+          new Date().toISOString()
+        ).run();
+        
+        console.log('[CREATE] ✅ Perfil do usuário salvo');
+      } catch (userError) {
+        console.log('[CREATE] ⚠️ Erro ao salvar usuário (continuando):', userError.message);
+      }
+    }
     
     // Gerar dados do documento
     const documentId = crypto.randomUUID();
@@ -252,14 +289,71 @@ async function getDocuments(env: Env, request: Request): Promise<Response> {
       console.log('[GET] ✅ SELECT sem content executado, documentos:', documents.length);
     }
     
+    // Extrair perfil do usuário atual do header
+    let currentUserProfile = null;
+    try {
+      const profileHeader = request.headers.get('X-User-Profile');
+      if (profileHeader) {
+        currentUserProfile = JSON.parse(profileHeader);
+        console.log('[GET] Perfil do usuário atual:', currentUserProfile);
+      }
+    } catch (e) {
+      console.log('[GET] Erro ao extrair perfil:', e.message);
+    }
+
+    // Buscar informações dos proprietários da tabela users
+    const ownerIds = [...new Set(documents.map(doc => doc.owner_id).filter(Boolean))];
+    const usersData = {};
+    
+    if (ownerIds.length > 0) {
+      try {
+        const placeholders = ownerIds.map(() => '?').join(',');
+        const usersStmt = env.DB.prepare(`
+          SELECT id, name, email, avatar_url, provider
+          FROM users
+          WHERE id IN (${placeholders})
+        `);
+        
+        const usersResult = await usersStmt.bind(...ownerIds).all();
+        (usersResult.results || []).forEach(user => {
+          usersData[user.id] = user;
+        });
+        
+        console.log('[GET] ✅ Dados dos usuários carregados:', Object.keys(usersData).length);
+      } catch (usersError) {
+        console.log('[GET] ⚠️ Erro ao buscar usuários:', usersError.message);
+      }
+    }
+
     // Enriquecer documentos com informações do proprietário
     const enrichedDocuments = documents.map(doc => {
       const ownerHash = doc.owner_id?.replace('user-', '') || 'demo';
+      const isOwner = doc.owner_id === currentUserId;
+      const userData = usersData[doc.owner_id];
+      
+      // Usar dados reais do usuário se disponível, senão fallback
+      let ownerName = `Usuário ${ownerHash.slice(0, 8)}`;
+      let avatarSeed = ownerHash;
+      let avatarUrl = userData?.avatar_url;
+      
+      if (userData?.name) {
+        ownerName = userData.name;
+        avatarSeed = userData.name;
+      } else if (isOwner && currentUserProfile?.name) {
+        ownerName = currentUserProfile.name;
+        avatarSeed = currentUserProfile.name;
+      }
+      
+      // Se não temos avatar_url do banco, gerar um
+      if (!avatarUrl) {
+        avatarUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(avatarSeed)}`;
+      }
+      
       return {
         ...doc,
-        owner_name: `Usuário ${ownerHash.slice(0, 8)}`,
-        owner_avatar_url: `https://api.dicebear.com/7.x/initials/svg?seed=${ownerHash}`,
-        is_owner: doc.owner_id === currentUserId
+        owner_name: ownerName,
+        owner_avatar_url: avatarUrl,
+        is_owner: isOwner
       };
     });
     
