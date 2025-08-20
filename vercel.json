@@ -1,7 +1,6 @@
 {
   "version": 2,
   "framework": "nextjs",
-  "nodeVersion": "18.x",
   "env": {
     "NEXT_PUBLIC_API_URL": "https://collab-docs.collabdocs.workers.dev/api"
   }
