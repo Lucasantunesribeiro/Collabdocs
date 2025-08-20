@@ -60,8 +60,8 @@ class ApiService {
       // Detectar automaticamente o perfil do usuário logado
       this.userProfile = this.detectUserProfile();
       
-      console.log('🔑 Nova sessão criada com token:', this.sessionToken);
-      console.log('👤 Perfil do usuário detectado:', this.userProfile);
+      console.log('[AUTH] Nova sessão criada com token:', this.sessionToken);
+      console.log('[AUTH] Perfil do usuário detectado:', this.userProfile);
     }
     return this.sessionToken;
   }
@@ -80,7 +80,7 @@ class ApiService {
         const text = element.textContent?.trim();
         if (text && text.length > 2 && text !== 'Usuário' && text !== 'Demo') {
           userName = text;
-          console.log('🔍 Nome detectado do DOM:', userName);
+          console.log('[AUTH] Nome detectado do DOM:', userName);
           break;
         }
       }
@@ -91,12 +91,12 @@ class ApiService {
         const text = element.textContent?.trim();
         if (text && text.includes('@')) {
           userEmail = text;
-          console.log('🔍 Email detectado do DOM:', userEmail);
+          console.log('[AUTH] Email detectado do DOM:', userEmail);
           break;
         }
       }
     } catch (error) {
-      console.log('⚠️ Erro ao detectar perfil do DOM:', error);
+      console.log('[AUTH] Erro ao detectar perfil do DOM:', error);
     }
     
     // 2. Se não conseguiu detectar, usar valores baseados no token mas mais específicos
@@ -114,7 +114,7 @@ class ApiService {
     try {
       localStorage.setItem('collabdocs_user_profile', JSON.stringify({ name: userName, email: userEmail }));
     } catch (error) {
-      console.log('⚠️ Erro ao salvar perfil no localStorage:', error);
+      console.log('[AUTH] Erro ao salvar perfil no localStorage:', error);
     }
     
     return { name: userName, email: userEmail };

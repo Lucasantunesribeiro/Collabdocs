@@ -6,12 +6,11 @@ import { Input } from './ui/Input';
 import { Card, CardContent, CardHeader } from './ui/Card';
 import { Alert } from './ui/Alert';
 import { 
-  Sparkles, 
+  FileText,
+  Plus,
   Lock, 
   Globe, 
-  X, 
-  Lightbulb,
-  FileText
+  X
 } from 'lucide-react';
 
 interface CreateDocumentModalProps {
@@ -63,7 +62,7 @@ export function CreateDocumentModal({ onClose, onCreate }: CreateDocumentModalPr
         <CardHeader className="pb-4">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center">
-              <Sparkles className="w-6 h-6 text-primary-600" />
+              <Plus className="w-6 h-6 text-primary-600" />
             </div>
             <div>
               <h3 className="text-2xl font-semibold text-text-900">
@@ -186,7 +185,7 @@ export function CreateDocumentModal({ onClose, onCreate }: CreateDocumentModalPr
                 type="submit"
                 disabled={isSubmitting || !title.trim()}
                 isLoading={isSubmitting}
-                icon={Sparkles}
+                icon={Plus}
                 className="flex-1"
               >
                 {isSubmitting ? 'Criando...' : 'Criar Documento'}

@@ -317,6 +317,19 @@ async function getDocuments(env: Env, user: JWTPayload): Promise<Response> {
     console.log('🔍 User.sub value:', user.sub);
     console.log('🔍 User.sub type:', typeof user.sub);
     
+    // Verificar se a coluna content existe na tabela
+    let hasContentColumn = false;
+    try {
+      const schemaCheck = await env.DB.prepare(`
+        SELECT name FROM pragma_table_info('documents') WHERE name = 'content'
+      `).first();
+      hasContentColumn = !!schemaCheck;
+      console.log('🔍 Coluna content existe:', hasContentColumn);
+    } catch (schemaError) {
+      console.log('⚠️ Erro ao verificar schema, assumindo estrutura sem content');
+      hasContentColumn = false;
+    }
+    
     // Primeiro, vamos testar uma consulta simples
     console.log('🔍 Testando consulta simples...');
     const simpleStmt = env.DB.prepare(`
@@ -325,22 +338,20 @@ async function getDocuments(env: Env, user: JWTPayload): Promise<Response> {
     const simpleResult = await simpleStmt.first();
     console.log('🔍 Total de documentos na tabela:', simpleResult);
     
-    // Agora vamos testar uma consulta sem parâmetros
-    console.log('🔍 Testando consulta sem parâmetros...');
+    // Query adaptável baseada na estrutura da tabela
+    const selectFields = hasContentColumn 
+      ? 'id, title, visibility, owner_id, created_at, updated_at, content'
+      : 'id, title, visibility, owner_id, created_at, updated_at';
+    
+    console.log('🔍 Buscando documentos com campos:', selectFields);
     const noParamStmt = env.DB.prepare(`
-      SELECT 
-        id,
-        title,
-        visibility,
-        owner_id,
-        created_at,
-        updated_at
+      SELECT ${selectFields}
       FROM documents
       ORDER BY updated_at DESC
     `);
     
     const noParamResult = await noParamStmt.all();
-    console.log('🔍 Resultado sem parâmetros:', noParamResult);
+    console.log('🔍 Resultado da query:', noParamResult);
     
     // Filtrar no JavaScript em vez de SQL
     const allDocuments = noParamResult.results || [];
@@ -348,17 +359,29 @@ async function getDocuments(env: Env, user: JWTPayload): Promise<Response> {
       doc.visibility === 'public' || doc.owner_id === user.sub
     );
     
-    console.log('🔍 Documentos filtrados para usuário:', userDocuments.length);
-    console.log('🔍 Documentos retornados:', userDocuments);
+    // Garantir que content sempre existe no retorno
+    const documentsWithContent = userDocuments.map(doc => ({
+      ...doc,
+      content: doc.content || ''
+    }));
     
-    return new Response(JSON.stringify({ documents: userDocuments }), {
+    console.log('🔍 Documentos filtrados para usuário:', documentsWithContent.length);
+    console.log('🔍 Documentos retornados:', documentsWithContent);
+    
+    return new Response(JSON.stringify({ documents: documentsWithContent }), {
       status: 200,
       headers: addCORSHeaders({ 'Content-Type': 'application/json' })
     });
   } catch (error) {
     console.error('❌ Erro ao buscar documentos:', error);
     console.error('❌ Stack trace:', error.stack);
-    return new Response(JSON.stringify({ error: 'Erro interno do servidor' }), {
+    console.error('❌ Mensagem do erro:', error.message);
+    
+    return new Response(JSON.stringify({ 
+      error: 'Erro interno do servidor',
+      detail: error.message,
+      suggestion: 'Verifique se as migrações foram aplicadas corretamente'
+    }), {
       status: 500,
       headers: addCORSHeaders({ 'Content-Type': 'application/json' })
     });
@@ -373,12 +396,40 @@ async function createDocument(env: Env, user: JWTPayload, data: any): Promise<Re
     const now = new Date().toISOString();
     const content = data.content || '';
     
-    console.log('🔍 Inserindo documento com todas as colunas...');
+    // Verificar se a coluna content existe na tabela
+    console.log('🔍 Verificando estrutura da tabela documents...');
+    let hasContentColumn = false;
     
-    const stmt = env.DB.prepare(`
-      INSERT INTO documents (id, owner_id, title, visibility, created_at, updated_at, content)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
+    try {
+      const schemaCheck = await env.DB.prepare(`
+        SELECT name FROM pragma_table_info('documents') WHERE name = 'content'
+      `).first();
+      hasContentColumn = !!schemaCheck;
+      console.log('🔍 Coluna content existe:', hasContentColumn);
+    } catch (schemaError) {
+      console.log('⚠️ Erro ao verificar schema, assumindo estrutura sem content:', schemaError.message);
+      hasContentColumn = false;
+    }
+    
+    let stmt, insertParams;
+    
+    if (hasContentColumn) {
+      // Usar INSERT com coluna content (migração 0002 aplicada)
+      console.log('🔍 Inserindo documento COM coluna content...');
+      stmt = env.DB.prepare(`
+        INSERT INTO documents (id, owner_id, title, visibility, created_at, updated_at, content)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+      insertParams = [documentId, user.sub, data.title, data.visibility || 'private', now, now, content];
+    } else {
+      // Usar INSERT sem coluna content (migração 0002 NÃO aplicada)
+      console.log('🔍 Inserindo documento SEM coluna content...');
+      stmt = env.DB.prepare(`
+        INSERT INTO documents (id, owner_id, title, visibility, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+      insertParams = [documentId, user.sub, data.title, data.visibility || 'private', now, now];
+    }
     
     console.log('🔍 Parâmetros para INSERT:', {
       id: documentId,
@@ -387,29 +438,36 @@ async function createDocument(env: Env, user: JWTPayload, data: any): Promise<Re
       visibility: data.visibility || 'private',
       created_at: now,
       updated_at: now,
-      content: content
+      ...(hasContentColumn && { content: content })
     });
     
-    const result = await stmt.bind(
-      documentId,           // id
-      user.sub,            // owner_id
-      data.title,           // title
-      data.visibility || 'private', // visibility
-      now,                 // created_at
-      now,                 // updated_at
-      content              // content
-    ).run();
-    
+    const result = await stmt.bind(...insertParams).run();
     console.log('🔍 Resultado do INSERT:', result);
     
     if (result.changes === 0) {
       throw new Error('Falha ao criar documento - nenhuma linha inserida');
     }
     
-    // Buscar o documento criado com todas as colunas
+    // Se não há coluna content, atualizar o documento com content em uma segunda query
+    if (!hasContentColumn && content) {
+      console.log('🔄 Tentando atualizar content em query separada...');
+      try {
+        await env.DB.prepare(`UPDATE documents SET content = ? WHERE id = ?`)
+          .bind(content, documentId).run();
+        console.log('✅ Content atualizado em query separada');
+      } catch (contentError) {
+        console.log('⚠️ Não foi possível salvar content (coluna não existe):', contentError.message);
+      }
+    }
+    
+    // Buscar o documento criado
     console.log('🔍 Buscando documento criado...');
+    const selectFields = hasContentColumn 
+      ? 'id, title, visibility, owner_id, created_at, updated_at, content'
+      : 'id, title, visibility, owner_id, created_at, updated_at';
+    
     const getStmt = env.DB.prepare(`
-      SELECT id, title, visibility, owner_id, created_at, updated_at, content
+      SELECT ${selectFields}
       FROM documents
       WHERE id = ?
     `);
@@ -418,6 +476,11 @@ async function createDocument(env: Env, user: JWTPayload, data: any): Promise<Re
     
     if (!document) {
       throw new Error('Documento criado mas não encontrado na busca');
+    }
+    
+    // Garantir que content sempre existe no retorno, mesmo se não foi salvo no banco
+    if (!hasContentColumn) {
+      document.content = content || '';
     }
     
     console.log('✅ Documento criado com sucesso:', document);
@@ -429,7 +492,18 @@ async function createDocument(env: Env, user: JWTPayload, data: any): Promise<Re
   } catch (error) {
     console.error('❌ Erro ao criar documento:', error);
     console.error('❌ Stack trace:', error.stack);
-    return new Response(JSON.stringify({ error: 'Erro interno do servidor' }), {
+    console.error('❌ Mensagem do erro:', error.message);
+    
+    // Retornar erro mais detalhado para debugging
+    const errorDetail = error.message.includes('no such column') 
+      ? 'Schema da tabela documents incompatível. Execute: wrangler d1 execute collabdocs-db --file=./migrations/0002_add_content_column.sql'
+      : error.message;
+      
+    return new Response(JSON.stringify({ 
+      error: 'Erro interno do servidor',
+      detail: errorDetail,
+      suggestion: 'Verifique se as migrações foram aplicadas corretamente'
+    }), {
       status: 500,
       headers: addCORSHeaders({ 'Content-Type': 'application/json' })
     });
