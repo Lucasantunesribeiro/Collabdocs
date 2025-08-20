@@ -372,10 +372,22 @@ async function createDocument(env: Env, user: JWTPayload, data: any): Promise<Re
     const documentId = crypto.randomUUID();
     const now = new Date().toISOString();
     
+    // Primeiro, vamos testar uma inserção simples com apenas as colunas essenciais
+    console.log('🔍 Testando inserção com colunas essenciais...');
+    
     const stmt = env.DB.prepare(`
-      INSERT INTO documents (id, owner_id, title, visibility, created_at, updated_at, content)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO documents (id, owner_id, title, visibility, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
     `);
+    
+    console.log('🔍 Parâmetros para INSERT:', {
+      id: documentId,
+      owner_id: user.sub,
+      title: data.title,
+      visibility: data.visibility || 'private',
+      created_at: now,
+      updated_at: now
+    });
     
     const result = stmt.run(
       documentId,           // id
@@ -383,30 +395,30 @@ async function createDocument(env: Env, user: JWTPayload, data: any): Promise<Re
       data.title,           // title
       data.visibility || 'private', // visibility
       now,                 // created_at
-      now,                 // updated_at
-      data.content || ''   // content
+      now                  // updated_at
     );
     
+    console.log('🔍 Resultado do INSERT:', result);
+    
     if (result.changes === 0) {
-      throw new Error('Falha ao criar documento');
+      throw new Error('Falha ao criar documento - nenhuma linha inserida');
     }
     
-    // Buscar o documento criado (sem JOIN complexo)
+    // Buscar o documento criado com consulta simples
+    console.log('🔍 Buscando documento criado...');
     const getStmt = env.DB.prepare(`
-      SELECT 
-        id,
-        title,
-        visibility,
-        owner_id,
-        created_at,
-        updated_at
+      SELECT id, title, visibility, owner_id, created_at, updated_at
       FROM documents
       WHERE id = ?
     `);
     
-    const document = await getStmt.first(documentId);
+    const document = await getStmt.bind(documentId).first();
     
-    console.log('✅ Documento criado:', document);
+    if (!document) {
+      throw new Error('Documento criado mas não encontrado na busca');
+    }
+    
+    console.log('✅ Documento criado com sucesso:', document);
     
     return new Response(JSON.stringify({ document }), {
       status: 201,
@@ -414,6 +426,7 @@ async function createDocument(env: Env, user: JWTPayload, data: any): Promise<Re
     });
   } catch (error) {
     console.error('❌ Erro ao criar documento:', error);
+    console.error('❌ Stack trace:', error.stack);
     return new Response(JSON.stringify({ error: 'Erro interno do servidor' }), {
       status: 500,
       headers: addCORSHeaders({ 'Content-Type': 'application/json' })
