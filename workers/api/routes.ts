@@ -182,17 +182,24 @@ export default {
 };
 
 async function authenticateRequest(request: Request, env: Env): Promise<AuthenticatedRequest> {
+  console.log('🔍 Iniciando autenticação...');
+  console.log('🔍 Headers recebidos:', Object.fromEntries(request.headers.entries()));
+  
   const authorization = request.headers.get('Authorization');
+  console.log('🔍 Header Authorization:', authorization);
+  
   if (!authorization?.startsWith('Bearer ')) {
-    console.log('⚠️ Sem token de autorização');
+    console.log('⚠️ Sem token de autorização ou formato incorreto');
     throw new Error('Unauthorized');
   }
 
   const token = authorization.slice(7);
-  console.log('🔑 Token recebido:', token.slice(0, 20) + '...');
+  console.log('🔑 Token extraído:', token.slice(0, 20) + '...');
   
   // Extrair perfil do usuário dos headers
   const userProfileHeader = request.headers.get('X-User-Profile');
+  console.log('🔍 Header X-User-Profile:', userProfileHeader);
+  
   let userProfile = null;
   
   if (userProfileHeader) {
@@ -204,6 +211,7 @@ async function authenticateRequest(request: Request, env: Env): Promise<Authenti
     }
   }
   
+  console.log('🔍 Chamando verifyJWT...');
   const user = await verifyJWT(token, env, userProfile);
   
   if (!user) {
