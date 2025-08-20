@@ -314,25 +314,35 @@ async function verifyJWT(token: string, env: Env, userProfile?: any): Promise<JW
 async function getDocuments(env: Env, user: JWTPayload): Promise<Response> {
   try {
     console.log('📋 Buscando documentos para usuário:', user);
+    console.log('🔍 User.sub value:', user.sub);
+    console.log('🔍 User.sub type:', typeof user.sub);
     
-    // Buscar documentos: públicos OU privados do usuário autenticado
+    // Primeiro, vamos testar uma consulta simples
+    console.log('🔍 Testando consulta simples...');
+    const simpleStmt = env.DB.prepare(`
+      SELECT COUNT(*) as total FROM documents
+    `);
+    const simpleResult = await simpleStmt.first();
+    console.log('🔍 Total de documentos na tabela:', simpleResult);
+    
+    // Agora a consulta principal
     const stmt = env.DB.prepare(`
       SELECT 
         d.id,
         d.title,
         d.visibility,
         d.owner_id,
-        u.name as owner_name,
-        u.avatar_url as owner_avatar_url,
         d.created_at,
         d.updated_at
       FROM documents d
-      LEFT JOIN users u ON d.owner_id = u.id
       WHERE d.visibility = 'public' OR d.owner_id = ?
       ORDER BY d.updated_at DESC
     `);
     
+    console.log('🔍 Executando consulta SQL...');
     const result = await stmt.all(user.sub);
+    console.log('🔍 Resultado da consulta:', result);
+    
     const documents = result.results || [];
     
     console.log('🔍 Documentos encontrados:', documents.length);
@@ -344,6 +354,7 @@ async function getDocuments(env: Env, user: JWTPayload): Promise<Response> {
     });
   } catch (error) {
     console.error('❌ Erro ao buscar documentos:', error);
+    console.error('❌ Stack trace:', error.stack);
     return new Response(JSON.stringify({ error: 'Erro interno do servidor' }), {
       status: 500,
       headers: addCORSHeaders({ 'Content-Type': 'application/json' })
