@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User, JWTPayload } from '@collab-docs/shared';
+import { User, JWTPayload } from '../types/shared';
 
 interface AuthContextType {
   user: JWTPayload | null;

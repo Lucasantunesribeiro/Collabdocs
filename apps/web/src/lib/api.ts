@@ -16,18 +16,9 @@ const getApiBaseUrl = () => {
 
 const API_BASE_URL = getApiBaseUrl();
 
-export interface Document {
-  id: string;
-  title: string;
-  content: string;
-  created_at: string;
-  updated_at: string;
-  visibility: 'private' | 'public';
-  owner_id: string;
-  // Campos adicionais para informações do proprietário
-  owner_name?: string;
-  owner_avatar_url?: string;
-}
+import { Document } from '../types/shared';
+
+export { Document };
 
 export interface CreateDocumentRequest {
   title: string;

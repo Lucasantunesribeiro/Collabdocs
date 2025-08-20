@@ -11,8 +11,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@collab-docs/shared": "*",
-    "@collab-docs/yjs-provider": "*",
     "@tiptap/extension-collaboration": "^2.9.1",
     "@tiptap/extension-collaboration-cursor": "^2.9.1",
     "@tiptap/react": "^2.9.1",
