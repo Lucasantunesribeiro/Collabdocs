@@ -41,12 +41,23 @@ export interface UpdateDocumentRequest {
 }
 
 class ApiService {
+  private sessionToken: string | null = null;
+
   private generateUniqueToken(): string {
     // Gerar um token único para cada sessão do usuário
     // Em produção, isso viria do sistema de autenticação real
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(2);
     return `user-${timestamp}-${random}`;
+  }
+
+  private getSessionToken(): string {
+    // Se não há token de sessão, criar um novo
+    if (!this.sessionToken) {
+      this.sessionToken = this.generateUniqueToken();
+      console.log('🔑 Nova sessão criada com token:', this.sessionToken);
+    }
+    return this.sessionToken;
   }
 
   private async request<T>(
@@ -63,12 +74,12 @@ class ApiService {
       ...options,
     };
 
-    // Gerar token único para cada usuário (MVP)
+    // Usar token de sessão persistente (MVP)
     // Em produção, isso viria do sistema de autenticação real
-    const uniqueToken = this.generateUniqueToken();
+    const sessionToken = this.getSessionToken();
     config.headers = {
       ...config.headers,
-      'Authorization': `Bearer ${uniqueToken}`,
+      'Authorization': `Bearer ${sessionToken}`,
     };
 
     try {

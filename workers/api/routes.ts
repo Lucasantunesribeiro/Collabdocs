@@ -121,6 +121,9 @@ async function verifyJWT(token: string, env: Env): Promise<JWTPayload | null> {
     // Gerar um ID único baseado no hash do token
     const userId = `user-${token.slice(0, 8)}`;
     
+    console.log('🔍 Verificando token:', token.slice(0, 20) + '...');
+    console.log('🔍 User ID gerado:', userId);
+    
     // Verificar se o usuário já existe no banco
     let user = await env.DB.prepare(`
       SELECT id, email, name, avatar_url, provider, provider_id, created_at
@@ -131,6 +134,8 @@ async function verifyJWT(token: string, env: Env): Promise<JWTPayload | null> {
       // Criar novo usuário se não existir
       const userEmail = `${userId}@collabdocs.local`;
       const userName = `Usuário ${token.slice(0, 4)}`;
+      
+      console.log('🆕 Criando novo usuário:', { id: userId, name: userName, email: userEmail });
       
       await env.DB.prepare(`
         INSERT INTO users (id, email, name, provider, provider_id, created_at)
@@ -146,9 +151,11 @@ async function verifyJWT(token: string, env: Env): Promise<JWTPayload | null> {
         provider_id: token.slice(0, 8),
         created_at: new Date().toISOString()
       };
+    } else {
+      console.log('✅ Usuário encontrado:', { id: user.id, name: user.name });
     }
     
-    return {
+    const jwtPayload = {
       sub: user.id,
       name: user.name,
       email: user.email,
@@ -156,8 +163,13 @@ async function verifyJWT(token: string, env: Env): Promise<JWTPayload | null> {
       provider: user.provider as 'github' | 'google',
       iat: Date.now() / 1000,
       exp: Date.now() / 1000 + 3600, // 1 hora
-    } as JWTPayload;
-  } catch {
+    };
+    
+    console.log('🔑 JWT Payload retornado:', { sub: jwtPayload.sub, name: jwtPayload.name });
+    
+    return jwtPayload as JWTPayload;
+  } catch (error) {
+    console.error('❌ Erro na verificação JWT:', error);
     return null;
   }
 }
@@ -167,6 +179,11 @@ async function getDocuments(request: AuthenticatedRequest, env: Env): Promise<Re
     return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
   }
 
+  console.log('📋 Buscando documentos para usuário:', { 
+    id: request.user.sub, 
+    name: request.user.name 
+  });
+
   // Corrigir a lógica de segurança: usuários só veem documentos públicos OU documentos privados que eles criaram
   const result = await env.DB.prepare(`
     SELECT d.*, u.name as owner_name, u.avatar_url as owner_avatar_url
@@ -175,6 +192,15 @@ async function getDocuments(request: AuthenticatedRequest, env: Env): Promise<Re
     WHERE d.visibility = 'public' OR d.owner_id = ?
     ORDER BY d.updated_at DESC
   `).bind(request.user.sub).all();
+
+  console.log('🔍 Documentos encontrados:', result.results.length);
+  console.log('🔍 Documentos retornados:', result.results.map(d => ({
+    id: d.id,
+    title: d.title,
+    visibility: d.visibility,
+    owner_id: d.owner_id,
+    owner_name: d.owner_name
+  })));
 
   return new Response(JSON.stringify({ documents: result.results }), {
     headers: { 'Content-Type': 'application/json' }
