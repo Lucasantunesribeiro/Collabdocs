@@ -205,18 +205,30 @@ async function getDocuments(env: Env, request: Request): Promise<Response> {
   try {
     console.log('[GET] Buscando documentos...');
     
+    // Extrair usuário do token para filtrar documentos
+    const authorization = request.headers.get('Authorization');
+    let currentUserId = null;
+    
+    if (authorization?.startsWith('Bearer ')) {
+      const token = authorization.slice(7);
+      const tokenHash = token.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12);
+      currentUserId = `user-${tokenHash}`;
+      console.log('[GET] Usuário autenticado:', currentUserId);
+    }
+    
     let documents = [];
     
     try {
-      // Tentar SELECT com content primeiro
+      // Tentar SELECT com content primeiro (filtrando por usuário e documentos públicos)
       console.log('[GET] Tentando SELECT com content...');
       const stmtWithContent = env.DB.prepare(`
         SELECT id, title, visibility, owner_id, created_at, updated_at, content
         FROM documents
+        WHERE visibility = 'public' OR owner_id = ?
         ORDER BY updated_at DESC
       `);
       
-      const resultContent = await stmtWithContent.all();
+      const resultContent = await stmtWithContent.bind(currentUserId || '').all();
       documents = resultContent.results || [];
       console.log('[GET] ✅ SELECT com content executado, documentos:', documents.length);
       
@@ -227,10 +239,11 @@ async function getDocuments(env: Env, request: Request): Promise<Response> {
       const stmtBasic = env.DB.prepare(`
         SELECT id, title, visibility, owner_id, created_at, updated_at
         FROM documents
+        WHERE visibility = 'public' OR owner_id = ?
         ORDER BY updated_at DESC
       `);
       
-      const resultBasic = await stmtBasic.all();
+      const resultBasic = await stmtBasic.bind(currentUserId || '').all();
       documents = (resultBasic.results || []).map(doc => ({
         ...doc,
         content: '' // Adicionar content vazio
@@ -239,9 +252,20 @@ async function getDocuments(env: Env, request: Request): Promise<Response> {
       console.log('[GET] ✅ SELECT sem content executado, documentos:', documents.length);
     }
     
+    // Enriquecer documentos com informações do proprietário
+    const enrichedDocuments = documents.map(doc => {
+      const ownerHash = doc.owner_id?.replace('user-', '') || 'demo';
+      return {
+        ...doc,
+        owner_name: `Usuário ${ownerHash.slice(0, 8)}`,
+        owner_avatar_url: `https://api.dicebear.com/7.x/initials/svg?seed=${ownerHash}`,
+        is_owner: doc.owner_id === currentUserId
+      };
+    });
+    
     return new Response(JSON.stringify({ 
-      documents,
-      count: documents.length
+      documents: enrichedDocuments,
+      count: enrichedDocuments.length
     }), {
       status: 200,
       headers: addCORSHeaders({ 'Content-Type': 'application/json' })
