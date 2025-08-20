@@ -161,19 +161,19 @@ export function Dashboard({ user }: DashboardProps) {
 
             {/* User Info */}
             <div className="p-4 border-t border-text-200">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
-                  <span className="text-sm font-medium text-primary-600">
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold">
                     {user?.name?.charAt(0) || 'U'}
-                  </span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-text-900 truncate">
-                    {user?.name || 'Usuário'}
-                  </p>
-                  <p className="text-xs text-text-500 truncate">
-                    {user?.email || 'usuario@example.com'}
-                  </p>
+                  </div>
+                  <div>
+                    <div className="font-semibold text-gray-900" data-user-name={user?.name}>
+                      {user?.name || 'Usuário'}
+                    </div>
+                    <div className="text-sm text-gray-500" data-user-email={user?.email}>
+                      {user?.email || 'no-email@example.com'}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
