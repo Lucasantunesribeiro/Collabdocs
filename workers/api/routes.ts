@@ -147,9 +147,12 @@ async function verifyJWT(token: string, env: Env): Promise<JWTPayload | null> {
     // Em produção, usar uma biblioteca JWT compatível com Workers
     
     // Gerar um ID único baseado no hash do token
-    const userId = `user-${token.slice(0, 8)}`;
+    // Usar uma parte mais significativa do token para evitar duplicatas
+    const tokenHash = token.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12);
+    const userId = `user-${tokenHash}`;
     
     console.log('🔍 Verificando token:', token.slice(0, 20) + '...');
+    console.log('🔍 Token hash gerado:', tokenHash);
     console.log('🔍 User ID gerado:', userId);
     
     // Verificar se o usuário já existe no banco
@@ -161,14 +164,14 @@ async function verifyJWT(token: string, env: Env): Promise<JWTPayload | null> {
     if (!user) {
       // Criar novo usuário se não existir
       const userEmail = `${userId}@collabdocs.local`;
-      const userName = `Usuário ${token.slice(0, 4)}`;
+      const userName = `Usuário ${tokenHash.slice(0, 6)}`;
       
       console.log('🆕 Criando novo usuário:', { id: userId, name: userName, email: userEmail });
       
       await env.DB.prepare(`
         INSERT INTO users (id, email, name, provider, provider_id, created_at)
         VALUES (?, ?, ?, 'demo', ?, ?)
-      `).bind(userId, userEmail, userName, token.slice(0, 8), new Date().toISOString()).run();
+      `).bind(userId, userEmail, userName, tokenHash, new Date().toISOString()).run();
       
       user = {
         id: userId,
@@ -176,7 +179,7 @@ async function verifyJWT(token: string, env: Env): Promise<JWTPayload | null> {
         name: userName,
         avatar_url: null,
         provider: 'demo',
-        provider_id: token.slice(0, 8),
+        provider_id: tokenHash,
         created_at: new Date().toISOString()
       };
     } else {
