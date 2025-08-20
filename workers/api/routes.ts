@@ -170,7 +170,7 @@ async function verifyJWT(token: string, env: Env): Promise<JWTPayload | null> {
       
       await env.DB.prepare(`
         INSERT INTO users (id, email, name, provider, provider_id, created_at)
-        VALUES (?, ?, ?, 'demo', ?, ?)
+        VALUES (?, ?, ?, 'github', ?, ?)
       `).bind(userId, userEmail, userName, tokenHash, new Date().toISOString()).run();
       
       user = {
@@ -178,7 +178,7 @@ async function verifyJWT(token: string, env: Env): Promise<JWTPayload | null> {
         email: userEmail,
         name: userName,
         avatar_url: null,
-        provider: 'demo',
+        provider: 'github',
         provider_id: tokenHash,
         created_at: new Date().toISOString()
       };
