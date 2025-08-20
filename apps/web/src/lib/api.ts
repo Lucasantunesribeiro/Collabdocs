@@ -58,6 +58,7 @@ class ApiService {
       this.sessionToken = this.generateUniqueToken();
       
       // Simular perfil do usuário (em produção viria do sistema de auth)
+      // Usar o nome real que aparece na interface do CollabDocs
       this.userProfile = {
         name: 'Lucas Antunes', // Nome real do perfil
         email: 'lucas.afvr@gmail.com' // Email real do perfil

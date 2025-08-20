@@ -21,7 +21,8 @@ function addCORSHeaders(headers: Record<string, string> = {}): Record<string, st
   return {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-User-Profile',
+    'Access-Control-Max-Age': '86400',
     ...headers
   };
 }
@@ -180,7 +181,12 @@ async function verifyJWT(token: string, env: Env, userProfile?: any): Promise<JW
       const userEmail = userProfile?.email || `${userId}@collabdocs.local`;
       const userName = userProfile?.name || `Usuário ${tokenHash.slice(0, 6)}`;
       
-      console.log('🆕 Criando novo usuário:', { id: userId, name: userName, email: userEmail });
+      console.log('🆕 Criando novo usuário:', { 
+        id: userId, 
+        name: userName, 
+        email: userEmail,
+        profile_source: userProfile ? 'header' : 'generated'
+      });
       
       await env.DB.prepare(`
         INSERT INTO users (id, email, name, provider, provider_id, created_at)
@@ -197,7 +203,7 @@ async function verifyJWT(token: string, env: Env, userProfile?: any): Promise<JW
         created_at: new Date().toISOString()
       };
     } else {
-      console.log('✅ Usuário encontrado:', { id: user.id, name: user.name });
+      console.log('✅ Usuário encontrado:', { id: user.id, name: user.name, email: user.email });
       
       // Atualizar nome e email se o perfil mudou
       if (userProfile && (userProfile.name !== user.name || userProfile.email !== user.email)) {
@@ -212,6 +218,8 @@ async function verifyJWT(token: string, env: Env, userProfile?: any): Promise<JW
         
         user.name = userProfile.name;
         user.email = userProfile.email;
+        
+        console.log('✅ Perfil atualizado com sucesso');
       }
     }
     
