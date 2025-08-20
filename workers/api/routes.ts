@@ -16,7 +16,7 @@ function atob(str: string): string {
   }
 }
 
-// Helper function para adicionar headers CORS
+// Helper function para adicionar headers CORS - Updated: 2025-08-20 01:41
 function addCORSHeaders(headers: Record<string, string> = {}): Record<string, string> {
   return {
     'Access-Control-Allow-Origin': '*',
