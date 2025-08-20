@@ -406,7 +406,7 @@ async function createDocument(env: Env, user: JWTPayload, data: any): Promise<Re
       WHERE d.id = ?
     `);
     
-    const document = await getStmt.get(documentId);
+    const document = await getStmt.first(documentId);
     
     console.log('✅ Documento criado:', document);
     
