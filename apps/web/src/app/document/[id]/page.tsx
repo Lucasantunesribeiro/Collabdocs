@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { CollaborativeEditor } from '@/components/CollaborativeEditor';
-import { apiService, Document } from '@/lib/api';
+import { apiService } from '@/lib/api';
+import type { Document } from '@/types/shared';
 
 export default function DocumentPage({ params }: { params: Promise<{ id: string }> }) {
   const [document, setDocument] = useState<Document | null>(null);

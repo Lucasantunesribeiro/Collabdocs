@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { DocumentCard } from './DocumentCard';
 import { CreateDocumentModal } from './CreateDocumentModal';
-import { apiService, Document } from '@/lib/api';
+import { apiService } from '@/lib/api';
+import type { Document } from '@/types/shared';
 import { Button } from './ui/Button';
 import { Card, CardContent, CardHeader } from './ui/Card';
 import { Alert } from './ui/Alert';

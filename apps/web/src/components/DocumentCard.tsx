@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Document } from '@/lib/api';
+import type { Document } from '@/types/shared';
 import { Button } from './ui/Button';
 import { Card, CardContent } from './ui/Card';
 import { 

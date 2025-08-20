@@ -16,9 +16,7 @@ const getApiBaseUrl = () => {
 
 const API_BASE_URL = getApiBaseUrl();
 
-import { Document } from '../types/shared';
-
-export { Document };
+import type { Document } from '../types/shared';
 
 export interface CreateDocumentRequest {
   title: string;
