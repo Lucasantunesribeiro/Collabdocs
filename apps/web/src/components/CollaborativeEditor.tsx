@@ -173,16 +173,32 @@ export function CollaborativeEditor({ documentId, initialContent }: Collaborativ
           <div className="flex items-center justify-between">
             {/* Ferramentas de Formatação */}
             <div className="flex items-center gap-1">
-              <Button variant="ghost" size="sm" icon={Bold} />
-              <Button variant="ghost" size="sm" icon={Italic} />
+              <Button variant="ghost" size="sm" icon={Bold}>
+                {' '}
+              </Button>
+              <Button variant="ghost" size="sm" icon={Italic}>
+                {' '}
+              </Button>
               <div className="w-px h-6 bg-text-200 mx-2"></div>
-              <Button variant="ghost" size="sm" icon={List} />
-              <Button variant="ghost" size="sm" icon={ListOrdered} />
+              <Button variant="ghost" size="sm" icon={List}>
+                {' '}
+              </Button>
+              <Button variant="ghost" size="sm" icon={ListOrdered}>
+                {' '}
+              </Button>
               <div className="w-px h-6 bg-text-200 mx-2"></div>
-              <Button variant="ghost" size="sm" icon={Quote} />
-              <Button variant="ghost" size="sm" icon={Code} />
-              <Button variant="ghost" size="sm" icon={Link} />
-              <Button variant="ghost" size="sm" icon={Image} />
+              <Button variant="ghost" size="sm" icon={Quote}>
+                {' '}
+              </Button>
+              <Button variant="ghost" size="sm" icon={Code}>
+                {' '}
+              </Button>
+              <Button variant="ghost" size="sm" icon={Link}>
+                {' '}
+              </Button>
+              <Button variant="ghost" size="sm" icon={Image}>
+                {' '}
+              </Button>
             </div>
 
             {/* Status e Ações */}
