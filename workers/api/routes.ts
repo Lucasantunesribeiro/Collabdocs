@@ -351,7 +351,7 @@ async function getDocuments(env: Env, user: JWTPayload): Promise<Response> {
     console.log('🔍 Documentos filtrados para usuário:', userDocuments.length);
     console.log('🔍 Documentos retornados:', userDocuments);
     
-    return new Response(JSON.stringify(userDocuments), {
+    return new Response(JSON.stringify({ documents: userDocuments }), {
       status: 200,
       headers: addCORSHeaders({ 'Content-Type': 'application/json' })
     });
@@ -410,7 +410,7 @@ async function createDocument(env: Env, user: JWTPayload, data: any): Promise<Re
     
     console.log('✅ Documento criado:', document);
     
-    return new Response(JSON.stringify(document), {
+    return new Response(JSON.stringify({ document }), {
       status: 201,
       headers: addCORSHeaders({ 'Content-Type': 'application/json' })
     });
