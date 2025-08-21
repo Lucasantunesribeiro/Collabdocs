@@ -120,7 +120,7 @@ export default function SecureDashboard() {
               
               <Button 
                 onClick={handleSignOut}
-                variant="outline"
+                variant="secondary"
                 size="sm"
               >
                 Sair
@@ -167,7 +167,7 @@ export default function SecureDashboard() {
             <p className="text-red-600">{error}</p>
             <Button 
               onClick={loadDocuments} 
-              variant="outline" 
+              variant="secondary" 
               size="sm" 
               className="mt-2"
             >

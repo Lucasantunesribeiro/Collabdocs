@@ -3,26 +3,7 @@ import GithubProvider from "next-auth/providers/github"
 import GoogleProvider from "next-auth/providers/google"
 import { DefaultSession } from "next-auth"
 
-// Extend the built-in session types
-declare module "next-auth" {
-  interface Session extends DefaultSession {
-    user: {
-      id: string
-      name: string
-      email: string
-      image?: string
-      provider: 'github' | 'google'
-    }
-    accessToken: string
-  }
-}
-
-declare module "next-auth/jwt" {
-  interface JWT {
-    provider: 'github' | 'google'
-    accessToken: string
-  }
-}
+// Types are declared in src/types/next-auth.d.ts
 
 export const authOptions: NextAuthOptions = {
   providers: [
