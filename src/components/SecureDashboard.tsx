@@ -31,7 +31,11 @@ export default function SecureDashboard() {
         provider: session?.user?.provider
       })
       
-      const response = await secureApiService.getDocuments()
+      if (!session) {
+        throw new Error('Sessão não disponível');
+      }
+      
+      const response = await secureApiService.getDocuments(session)
       setDocuments(response.documents)
       
       console.log('[Dashboard] Documentos carregados:', response.documents.length)
@@ -47,11 +51,15 @@ export default function SecureDashboard() {
     try {
       console.log('[Dashboard] Criando novo documento...')
       
+      if (!session) {
+        throw new Error('Sessão não disponível');
+      }
+      
       const newDoc = await secureApiService.createDocument({
         title: 'Novo Documento',
         content: '# Novo Documento\n\nComece a escrever aqui...',
-        visibility: 'private'
-      })
+        visibility: 'public'
+      }, session)
       
       console.log('[Dashboard] Documento criado:', newDoc.document.id)
       

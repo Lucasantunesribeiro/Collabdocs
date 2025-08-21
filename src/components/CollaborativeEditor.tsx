@@ -26,9 +26,10 @@ import {
 interface CollaborativeEditorProps {
   documentId: string;
   initialContent: string;
+  session: any; // Sessão NextAuth
 }
 
-export function CollaborativeEditor({ documentId, initialContent }: CollaborativeEditorProps) {
+export function CollaborativeEditor({ documentId, initialContent, session }: CollaborativeEditorProps) {
   const [content, setContent] = useState(initialContent);
   const [isTyping, setIsTyping] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -65,7 +66,7 @@ export function CollaborativeEditor({ documentId, initialContent }: Collaborativ
     
     try {
       // Salvar na API
-      await secureApiService.updateDocument(documentId, { content });
+      await secureApiService.updateDocument(documentId, { content }, session);
       
       setLastSaved(new Date());
       setIsDirty(false);
@@ -89,7 +90,7 @@ export function CollaborativeEditor({ documentId, initialContent }: Collaborativ
     
     try {
       // Salvar na API
-      await secureApiService.updateDocument(documentId, { content });
+      await secureApiService.updateDocument(documentId, { content }, session);
       
       setLastSaved(new Date());
       setIsDirty(false);

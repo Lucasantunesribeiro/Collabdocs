@@ -45,49 +45,162 @@ export default {
         });
       }
       
-      // API routes
-      if (path.startsWith('/api/')) {
-        const apiPath = path.slice(4); // Remove '/api' prefix
+          // API routes
+          if (path.startsWith('/api/')) {
+            const apiPath = path.slice(4); // Remove '/api' prefix
+            console.log(`[API] API Path: ${apiPath}`);
+          
+            // 1. ROTA DE TESTE PRIMEIRO (antes de qualquer startsWith)
+            if (apiPath === '/debug/test' && method === 'GET') {
+            console.log(`[API] 🧪 ROTA DE TESTE ATIVADA`);
+            return new Response(JSON.stringify({ 
+              message: 'Rota de teste funcionando',
+              debug: {
+                apiPath: apiPath,
+                method: method,
+                timestamp: new Date().toISOString(),
+                path: path
+              }
+            }), { 
+              status: 200,
+              headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+            });
+          }
+          
+            // 2. ROTA DE DEBUG DE DOCUMENTOS (depois da rota específica)
+            if (apiPath.startsWith('/debug/documents/') && method === 'GET') {
+            const pathParts = apiPath.split('/');
+            console.log(`[API] 🚨 DEBUG DOCUMENT ROUTE ATIVADA`);
+            console.log(`[API] Path completo: ${apiPath}`);
+            console.log(`[API] Path parts:`, pathParts);
+            console.log(`[API] Path parts length: ${pathParts.length}`);
+            console.log(`[API] Path parts detalhado:`, pathParts.map((part, index) => `${index}: "${part}"`));
+            
+            if (pathParts.length >= 4) {
+              // ANÁLISE: apiPath = "/debug/documents/04ea2a05-e18d-438f-80c2-bd768939dfda"
+              // split('/') = ["", "debug", "documents", "04ea2a05-e18d-438f-80c2-bd768939dfda"]
+              // pathParts[3] = "04ea2a05-e18d-438f-80c2-bd768939dfda" ✅
+              
+              const documentId = pathParts[3]; // Índice 3 para o UUID (corrigido)
+              console.log(`[API] 🚨 DEBUG DOCUMENT ROUTE ATIVADA - ID: ${documentId}`);
+              console.log(`[API] ID extraído do índice 3: "${documentId}"`);
+              console.log(`[API] Análise completa:`, {
+                apiPath: apiPath,
+                splitResult: pathParts,
+                expectedIndex: 3,
+                actualValue: pathParts[3],
+                isValidUUID: documentId && documentId.length === 36 && documentId.includes('-')
+              });
+              
+              if (documentId && documentId.length === 36 && documentId.includes('-')) {
+                console.log(`[API] ✅ UUID válido, chamando debugDocument...`);
+                return await debugDocument(env, request, documentId);
+              } else {
+                console.error(`[API] ID do documento inválido: "${documentId}"`);
+                return new Response(JSON.stringify({ 
+                  error: 'ID do documento inválido',
+                  debug: {
+                    receivedId: documentId,
+                    pathParts: pathParts,
+                    expectedFormat: 'UUID v4 (36 caracteres com hífens)',
+                    explanation: `apiPath.split("/") resulta em ${JSON.stringify(pathParts)}`,
+                    analysis: {
+                      apiPath: apiPath,
+                      splitResult: pathParts,
+                      expectedIndex: 3,
+                      actualValue: pathParts[3],
+                      isValidUUID: documentId && documentId.length === 36 && documentId.includes('-')
+                    }
+                  }
+                }), { 
+                  status: 400,
+                  headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+                });
+              }
+            } else {
+              console.error(`[API] Estrutura de URL inválida para debug: ${apiPath}`);
+              return new Response(JSON.stringify({ 
+                error: 'Estrutura de URL inválida',
+                debug: {
+                  pathParts: pathParts,
+                  expectedFormat: '/debug/documents/{uuid}'
+                }
+              }), { 
+                status: 400,
+                headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+              });
+            }
+          }
         
-        if (apiPath === '/documents' && method === 'POST') {
-          return await createDocument(env, request);
-        }
-        
-        if (apiPath === '/documents' && method === 'GET') {
-          return await getDocuments(env, request);
-        }
-        
-        if (apiPath.startsWith('/documents/') && method === 'GET') {
-          const documentId = apiPath.split('/')[1];
-          return await getDocument(env, request, documentId);
-        }
-        
-        if (apiPath === '/debug' && method === 'GET') {
-          return await debugTables(env, request);
-        }
-        
-        return new Response(JSON.stringify({ error: 'Not Found' }), { 
-          status: 404,
-          headers: addCORSHeaders({ 'Content-Type': 'application/json' })
-        });
-      }
+            if (apiPath === '/documents' && method === 'POST') {
+              return await createDocument(env, request);
+            }
+            
+            if (apiPath === '/documents' && method === 'GET') {
+              return await getDocuments(env, request);
+            }
+            
+            if (apiPath.startsWith('/documents/') && method === 'GET') {
+              const pathParts = apiPath.split('/');
+              console.log(`[API] Path parts:`, pathParts);
+              
+              if (pathParts.length >= 2) {
+                const documentId = pathParts[1];
+                console.log(`[API] Document ID extraído: "${documentId}"`);
+                
+                if (documentId && documentId.trim() !== '') {
+                  return await getDocument(env, request, documentId);
+                } else {
+                  console.error(`[API] ID do documento vazio ou inválido: "${documentId}"`);
+                  return new Response(JSON.stringify({ error: 'ID do documento inválido' }), { 
+                    status: 400,
+                    headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+                  });
+                }
+              }
+            }
+            
+            if (apiPath === '/debug' && method === 'GET') {
+              return await debugTables(env, request);
+            }
+            
+            console.log(`[API] ❌ Rota não encontrada: ${apiPath}`);
+            return new Response(JSON.stringify({ 
+              error: 'Not Found',
+              debug: {
+                requestedPath: path,
+                apiPath: apiPath,
+                method: method,
+                availableRoutes: [
+                  '/documents', 
+                  '/debug', 
+                  '/debug/test',
+                  '/debug/documents/{id}'
+                ],
+                explanation: 'Verifique se a URL está correta e se o método HTTP é suportado'
+              }
+            }), { 
+              status: 404,
+              headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+            });
+          }
 
-      return new Response(JSON.stringify({ error: 'Not Found' }), { 
-        status: 404,
-        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
-      });
-    } catch (error) {
-      console.error('[API] Error:', error);
-      return new Response(JSON.stringify({ 
-        error: 'Internal Server Error',
-        message: error instanceof Error ? error.message : 'Unknown error'
-      }), { 
-        status: 500,
-        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
-      });
-    }
-  }
-};
+          return new Response(JSON.stringify({ error: 'Not Found' }), { 
+            status: 404,
+            headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+          });
+        } catch (error) {
+          console.error('[API] Error:', error);
+          return new Response(JSON.stringify({ 
+            error: 'Internal Server Error',
+            message: error instanceof Error ? error.message : 'Unknown error'
+          }), { 
+            status: 500,
+            headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+          });
+        }
+      }
+    };
 
 async function createDocument(env: Env, request: Request): Promise<Response> {
   try {
@@ -197,7 +310,7 @@ async function createDocument(env: Env, request: Request): Promise<Response> {
         documentId,
         userId,
         data.title || 'Novo Documento',
-        data.visibility || 'private',
+        data.visibility || 'public',
         now,
         now,
         content
@@ -207,7 +320,7 @@ async function createDocument(env: Env, request: Request): Promise<Response> {
         id: documentId,
         owner_id: userId,
         title: data.title || 'Novo Documento',
-        visibility: data.visibility || 'private',
+        visibility: data.visibility || 'public',
         created_at: now,
         updated_at: now,
         content: content
@@ -229,7 +342,7 @@ async function createDocument(env: Env, request: Request): Promise<Response> {
         documentId,
         userId,
         data.title || 'Novo Documento',
-        data.visibility || 'private',
+        data.visibility || 'public',
         now,
         now
       ).run();
@@ -238,7 +351,7 @@ async function createDocument(env: Env, request: Request): Promise<Response> {
         id: documentId,
         owner_id: userId,
         title: data.title || 'Novo Documento',
-        visibility: data.visibility || 'private',
+        visibility: data.visibility || 'public',
         created_at: now,
         updated_at: now,
         content: '' // Content vazio para compatibilidade
@@ -494,7 +607,18 @@ async function getDocuments(env: Env, request: Request): Promise<Response> {
 
 async function getDocument(env: Env, request: Request, documentId: string): Promise<Response> {
   try {
-    console.log(`[GET_DOC] Buscando documento com ID: ${documentId}`);
+    console.log(`[GET_DOC] Buscando documento com ID: "${documentId}"`);
+    console.log(`[GET_DOC] Tipo do ID: ${typeof documentId}`);
+    console.log(`[GET_DOC] Comprimento do ID: ${documentId?.length}`);
+
+    // Validação do ID
+    if (!documentId || documentId.trim() === '') {
+      console.error(`[GET_DOC] ID do documento inválido: "${documentId}"`);
+      return new Response(JSON.stringify({ error: 'ID do documento inválido' }), {
+        status: 400,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
 
     // Verificar autenticação
     const authorization = request.headers.get('Authorization');
@@ -544,20 +668,64 @@ async function getDocument(env: Env, request: Request, documentId: string): Prom
     }
 
     // Verificar permissão do documento
+    console.log(`[GET_DOC] Executando query para ID: "${documentId}"`);
+    
     const document = await env.DB.prepare(`
       SELECT d.id, d.owner_id, d.title, d.visibility, d.content, d.created_at, d.updated_at
       FROM documents d
       WHERE d.id = ?
     `).bind(documentId).first();
 
+    console.log(`[GET_DOC] Resultado da query:`, document);
+
     if (!document) {
-      return new Response(JSON.stringify({ error: 'Documento não encontrado' }), {
-        status: 404,
-        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
-      });
+      console.error(`[GET_DOC] Documento não encontrado para ID: "${documentId}"`);
+      
+      // Verificar se o documento existe na tabela
+      try {
+        const checkStmt = await env.DB.prepare(`SELECT COUNT(*) as count FROM documents WHERE id = ?`).bind(documentId).first();
+        console.log(`[GET_DOC] Contagem de documentos com este ID:`, checkStmt);
+        
+        const totalDocs = await env.DB.prepare(`SELECT COUNT(*) as count FROM documents`).first();
+        console.log(`[GET_DOC] Total de documentos na tabela:`, totalDocs);
+        
+        return new Response(JSON.stringify({ 
+          error: 'Documento não encontrado',
+          details: `ID: ${documentId}`,
+          debug: {
+            documentExists: checkStmt?.count > 0,
+            totalDocuments: totalDocs?.count,
+            requestedId: documentId
+          }
+        }), {
+          status: 404,
+          headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+        });
+      } catch (checkError) {
+        console.error(`[GET_DOC] Erro ao verificar existência:`, checkError);
+        return new Response(JSON.stringify({ 
+          error: 'Documento não encontrado',
+          details: `ID: ${documentId}`,
+          debug: {
+            error: checkError.message
+          }
+        }), {
+          status: 404,
+          headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+        });
+      }
     }
 
+
+
+    // CORREÇÃO: Verificar permissões ANTES de retornar erro
     const isOwner = document.owner_id === currentUserId;
+    console.log(`[GET_DOC] Verificando permissões:`, {
+      documentOwner: document.owner_id,
+      currentUser: currentUserId,
+      isOwner: isOwner,
+      documentVisibility: document.visibility
+    });
     
     // Verificar se é colaborador (simplificado por enquanto)
     let isCollaborator = false;
@@ -568,17 +736,40 @@ async function getDocument(env: Env, request: Request, documentId: string): Prom
       `).bind(documentId, currentUserId).first();
       
       isCollaborator = !!collaboratorCheck;
+      console.log(`[GET_DOC] É colaborador: ${isCollaborator}`);
     } catch (e) {
       // Se a tabela não existir, considerar apenas como owner
       isCollaborator = false;
+      console.log(`[GET_DOC] Tabela de colaboradores não existe`);
     }
 
+    // CORREÇÃO: Retornar 403 em vez de 404 para problemas de permissão
     if (!isOwner && !isCollaborator && document.visibility !== 'public') {
-      return new Response(JSON.stringify({ error: 'Você não tem permissão para acessar este documento' }), {
-        status: 403,
+      console.error(`[GET_DOC] ❌ ACESSO NEGADO - Usuário não tem permissão`);
+      console.error(`[GET_DOC] Detalhes:`, {
+        isOwner,
+        isCollaborator,
+        visibility: document.visibility,
+        currentUser: currentUserId,
+        documentOwner: document.owner_id
+      });
+      
+      return new Response(JSON.stringify({ 
+        error: 'Você não tem permissão para acessar este documento',
+        details: {
+          reason: 'Documento privado e você não é o proprietário',
+          documentId: documentId,
+          documentVisibility: document.visibility,
+          currentUser: currentUserId,
+          documentOwner: document.owner_id
+        }
+      }), {
+        status: 403, // CORREÇÃO: 403 Forbidden em vez de 404 Not Found
         headers: addCORSHeaders({ 'Content-Type': 'application/json' })
       });
     }
+
+    console.log(`[GET_DOC] ✅ Permissão concedida - carregando documento`);
 
     // Enriquecer documento com informações do proprietário
     const ownerHash = document.owner_id?.replace('user-', '') || 'demo';
@@ -630,6 +821,83 @@ async function getDocument(env: Env, request: Request, documentId: string): Prom
     return new Response(JSON.stringify({ 
       error: 'Erro ao buscar documento',
       message: error instanceof Error ? error.message : 'Erro desconhecido'
+    }), {
+      status: 500,
+      headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+    });
+  }
+}
+
+async function debugDocument(env: Env, request: Request, documentId: string): Promise<Response> {
+  try {
+    console.log(`[DEBUG_DOC] 🚨 FUNÇÃO ATIVADA - Verificando documento: ${documentId}`);
+    
+    const results: any = {
+      documentId,
+      exists: false,
+      document: null,
+      tableInfo: null,
+      allDocuments: [],
+      debug: {
+        functionCalled: true,
+        timestamp: new Date().toISOString()
+      }
+    };
+    
+    // Verificar se o documento existe
+    try {
+      console.log(`[DEBUG_DOC] Executando query: SELECT * FROM documents WHERE id = '${documentId}'`);
+      const docStmt = env.DB.prepare('SELECT * FROM documents WHERE id = ?');
+      const docResult = await docStmt.bind(documentId).first();
+      results.exists = !!docResult;
+      results.document = docResult;
+      console.log(`[DEBUG_DOC] ✅ Documento existe: ${results.exists}`);
+    } catch (e) {
+      results.document = { error: e.message };
+      console.error(`[DEBUG_DOC] ❌ Erro ao buscar documento:`, e.message);
+    }
+    
+    // Verificar estrutura da tabela
+    try {
+      console.log(`[DEBUG_DOC] Verificando estrutura da tabela documents...`);
+      const tableStmt = env.DB.prepare("PRAGMA table_info(documents)");
+      const tableResult = await tableStmt.all();
+      results.tableInfo = tableResult.results || [];
+      console.log(`[DEBUG_DOC] ✅ Estrutura da tabela:`, results.tableInfo);
+    } catch (e) {
+      results.tableInfo = { error: e.message };
+      console.error(`[DEBUG_DOC] ❌ Erro ao verificar estrutura da tabela:`, e.message);
+    }
+    
+    // Listar todos os documentos (limitado)
+    try {
+      console.log(`[DEBUG_DOC] Listando documentos na tabela...`);
+      const allDocsStmt = env.DB.prepare('SELECT id, title, owner_id FROM documents LIMIT 10');
+      const allDocsResult = await allDocsStmt.all();
+      results.allDocuments = allDocsResult.results || [];
+      console.log(`[DEBUG_DOC] ✅ Total de documentos na tabela: ${results.allDocuments.length}`);
+    } catch (e) {
+      results.allDocuments = { error: e.message };
+      console.error(`[DEBUG_DOC] ❌ Erro ao listar documentos:`, e.message);
+    }
+    
+    console.log(`[DEBUG_DOC] 🎯 Retornando resultado:`, JSON.stringify(results, null, 2));
+    
+    return new Response(JSON.stringify(results, null, 2), {
+      status: 200,
+      headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+    });
+    
+  } catch (error) {
+    console.error(`[DEBUG_DOC] 💥 ERRO FINAL:`, error);
+    return new Response(JSON.stringify({ 
+      error: 'Debug failed',
+      message: error instanceof Error ? error.message : 'Unknown error',
+      debug: {
+        functionCalled: true,
+        error: true,
+        timestamp: new Date().toISOString()
+      }
     }), {
       status: 500,
       headers: addCORSHeaders({ 'Content-Type': 'application/json' })

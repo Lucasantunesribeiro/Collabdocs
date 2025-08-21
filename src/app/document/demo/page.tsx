@@ -1,10 +1,12 @@
 'use client';
 
 import { useState } from 'react';
+import { useSession } from 'next-auth/react';
 import { CollaborativeEditor } from '@/components/CollaborativeEditor';
 
 export default function DocumentDemoPage() {
   const [isEditing, setIsEditing] = useState(false);
+  const { data: session } = useSession();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
@@ -170,6 +172,7 @@ Este é um documento de exemplo para demonstrar as funcionalidades do sistema de
 - **Comunique-se** com sua equipe durante a edição
 
 *Este documento foi criado para demonstrar as capacidades do CollabDocs. Experimente editar o conteúdo!*"
+                  session={session}
                 />
               ) : (
                 <div className="text-center py-16">

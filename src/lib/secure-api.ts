@@ -1,6 +1,20 @@
 // Secure API service using NextAuth session
-import { getSession } from 'next-auth/react'
 import type { Document } from '../types/shared'
+
+// Interface para sessão NextAuth
+interface NextAuthSession {
+  user: {
+    id: string
+    name: string
+    email: string
+    provider?: string
+    image?: string
+  }
+  accessToken?: string
+}
+
+// Tipo para sessão NextAuth que pode ser null
+type NextAuthSessionOrNull = NextAuthSession | null
 
 export interface CreateDocumentRequest {
   title: string
@@ -32,11 +46,9 @@ class SecureApiService {
    */
   private async authenticatedRequest<T>(
     endpoint: string,
+    session: NextAuthSession,
     options: RequestInit = {}
   ): Promise<T> {
-    // Obter sessão NextAuth
-    const session = await getSession()
-    
     if (!session || !session.user) {
       throw new Error('Usuário não autenticado')
     }
@@ -104,22 +116,22 @@ class SecureApiService {
   /**
    * Obter todos os documentos visíveis para o usuário atual
    */
-  async getDocuments(): Promise<{ documents: Document[] }> {
-    return this.authenticatedRequest<{ documents: Document[] }>('/documents')
+  async getDocuments(session: NextAuthSession): Promise<{ documents: Document[] }> {
+    return this.authenticatedRequest<{ documents: Document[] }>('/documents', session)
   }
 
   /**
    * Obter documento específico (com verificação de permissão)
    */
-  async getDocument(id: string): Promise<{ document: Document; permission: string }> {
-    return this.authenticatedRequest<{ document: Document; permission: string }>(`/documents/${id}`)
+  async getDocument(id: string, session: NextAuthSession): Promise<{ document: Document; permission: string }> {
+    return this.authenticatedRequest<{ document: Document; permission: string }>(`/documents/${id}`, session)
   }
 
   /**
    * Criar novo documento
    */
-  async createDocument(data: CreateDocumentRequest): Promise<{ document: Document }> {
-    return this.authenticatedRequest<{ document: Document }>('/documents', {
+  async createDocument(data: CreateDocumentRequest, session: NextAuthSession): Promise<{ document: Document }> {
+    return this.authenticatedRequest<{ document: Document }>('/documents', session, {
       method: 'POST',
       body: JSON.stringify(data),
     })
@@ -128,8 +140,8 @@ class SecureApiService {
   /**
    * Atualizar documento existente
    */
-  async updateDocument(id: string, data: UpdateDocumentRequest): Promise<{ document: Document; message: string }> {
-    return this.authenticatedRequest<{ document: Document; message: string }>(`/documents/${id}`, {
+  async updateDocument(id: string, data: UpdateDocumentRequest, session: NextAuthSession): Promise<{ document: Document; message: string }> {
+    return this.authenticatedRequest<{ document: Document; message: string }>(`/documents/${id}`, session, {
       method: 'PUT',
       body: JSON.stringify(data),
     })
@@ -138,15 +150,15 @@ class SecureApiService {
   /**
    * Obter histórico do documento
    */
-  async getDocumentHistory(id: string): Promise<{ snapshots: any[] }> {
-    return this.authenticatedRequest<{ snapshots: any[] }>(`/documents/${id}/history`)
+  async getDocumentHistory(id: string, session: NextAuthSession): Promise<{ snapshots: any[] }> {
+    return this.authenticatedRequest<{ snapshots: any[] }>(`/documents/${id}/history`, session)
   }
 
   /**
    * Adicionar colaborador a um documento
    */
-  async addCollaborator(documentId: string, email: string, permission: 'read' | 'write' = 'read'): Promise<{ message: string }> {
-    return this.authenticatedRequest<{ message: string }>(`/documents/${documentId}/collaborators`, {
+  async addCollaborator(documentId: string, email: string, session: NextAuthSession, permission: 'read' | 'write' = 'read'): Promise<{ message: string }> {
+    return this.authenticatedRequest<{ message: string }>(`/documents/${documentId}/collaborators`, session, {
       method: 'POST',
       body: JSON.stringify({ email, permission }),
     })
@@ -155,8 +167,8 @@ class SecureApiService {
   /**
    * Remover colaborador de um documento
    */
-  async removeCollaborator(documentId: string, email: string): Promise<{ message: string }> {
-    return this.authenticatedRequest<{ message: string }>(`/documents/${documentId}/collaborators`, {
+  async removeCollaborator(documentId: string, email: string, session: NextAuthSession): Promise<{ message: string }> {
+    return this.authenticatedRequest<{ message: string }>(`/documents/${documentId}/collaborators`, session, {
       method: 'DELETE',
       body: JSON.stringify({ email }),
     })
@@ -165,8 +177,8 @@ class SecureApiService {
   /**
    * Verificar se o usuário atual tem permissão para ver um documento
    */
-  async checkDocumentPermission(documentId: string): Promise<{ hasAccess: boolean; permission: string }> {
-    return this.authenticatedRequest<{ hasAccess: boolean; permission: string }>(`/documents/${documentId}/permission`)
+  async checkDocumentPermission(documentId: string, session: NextAuthSession): Promise<{ hasAccess: boolean; permission: string }> {
+    return this.authenticatedRequest<{ hasAccess: boolean; permission: string }>(`/documents/${documentId}/permission`, session)
   }
 }
 

@@ -1,26 +1,51 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useParams } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { CollaborativeEditor } from '@/components/CollaborativeEditor';
 import { secureApiService } from '@/lib/secure-api';
 import type { Document } from '@/types/shared';
 
-export default function DocumentPage({ params }: { params: Promise<{ id: string }> }) {
+export default function DocumentPage() {
   const [document, setDocument] = useState<Document | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const searchParams = useSearchParams();
+  const params = useParams();
+  const { data: session, status } = useSession();
   const editMode = searchParams.get('edit') === 'true';
 
   useEffect(() => {
     const loadDocument = async () => {
       try {
-        const documentId = await params.then(p => p.id);
+        // Verificar se a sessão está disponível
+        if (status === 'loading') {
+          return; // Aguardar carregamento da sessão
+        }
         
-        // Carregar documento da API
-        const response = await secureApiService.getDocument(documentId);
+        if (status === 'unauthenticated') {
+          setError('Usuário não autenticado');
+          setIsLoading(false);
+          return;
+        }
+        
+        if (!session) {
+          return; // Aguardar sessão
+        }
+        
+        // Usar useParams hook para obter o ID do documento
+        const documentId = params?.id as string;
+        
+        if (!documentId) {
+          throw new Error('ID do documento não encontrado');
+        }
+        
+        console.log('[DocumentPage] Carregando documento:', documentId);
+        
+        // Carregar documento da API com a sessão
+        const response = await secureApiService.getDocument(documentId, session);
         setDocument(response.document);
         setIsEditing(editMode);
         setIsLoading(false);
@@ -31,8 +56,10 @@ export default function DocumentPage({ params }: { params: Promise<{ id: string 
       }
     };
 
-    loadDocument();
-  }, [params, editMode]);
+    if (params?.id && session) {
+      loadDocument();
+    }
+  }, [params?.id, editMode, session, status]);
 
   const handleToggleEdit = () => {
     setIsEditing(!isEditing);
@@ -209,7 +236,7 @@ export default function DocumentPage({ params }: { params: Promise<{ id: string 
             
             <div className="p-6">
               {isEditing ? (
-                <CollaborativeEditor documentId={document.id} initialContent={document.content} />
+                <CollaborativeEditor documentId={document.id} initialContent={document.content} session={session} />
               ) : (
                 <div className="text-center py-16">
                   <div className="text-6xl mb-6">📝</div>

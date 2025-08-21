@@ -20,7 +20,7 @@ interface CreateDocumentModalProps {
 
 export function CreateDocumentModal({ onClose, onCreate }: CreateDocumentModalProps) {
   const [title, setTitle] = useState('');
-  const [visibility, setVisibility] = useState<'private' | 'public'>('private');
+  const [visibility, setVisibility] = useState<'private' | 'public'>('public');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<{ title?: string }>({});
 
