@@ -102,7 +102,7 @@ async function createDocument(env: Env, request: Request): Promise<Response> {
     }
 
     // Extrair perfil REAL do usuário autenticado via NextAuth
-    let userProfile = null;
+    let userProfile: any = null;
     let userId = '';
     
     try {
@@ -146,7 +146,7 @@ async function createDocument(env: Env, request: Request): Promise<Response> {
     }
     
     // Salvar/atualizar perfil do usuário se disponível
-    if (userProfile?.name) {
+    if (userProfile && userProfile.name) {
       try {
         console.log('[CREATE] Salvando perfil do usuário...');
         const upsertUserStmt = env.DB.prepare(`
@@ -282,8 +282,8 @@ async function getDocuments(env: Env, request: Request): Promise<Response> {
     }
     
     // Extrair perfil REAL do usuário autenticado
-    let currentUserId = null;
-    let currentUserProfile = null;
+    let currentUserId: string | null = null;
+    let currentUserProfile: any = null;
     
     try {
       const profileHeader = request.headers.get('X-User-Profile');
@@ -319,81 +319,117 @@ async function getDocuments(env: Env, request: Request): Promise<Response> {
       });
     }
     
-    let documents = [];
+    let documents: any[] = [];
     
     try {
-      // SELECT com controle de ACL avançado
-      console.log('[GET] Buscando documentos com controle de ACL para:', currentUserId);
-      const stmtWithContent = env.DB.prepare(`
-        SELECT DISTINCT d.id, d.title, d.visibility, d.owner_id, d.created_at, d.updated_at, d.content
-        FROM documents d
-        LEFT JOIN document_collaborators dc ON d.id = dc.document_id
-        WHERE 
-          d.visibility = 'public' 
-          OR d.owner_id = ?
-          OR (dc.user_id = ? AND dc.permission IN ('read', 'write', 'owner'))
-          OR (dc.user_email = ? AND dc.permission IN ('read', 'write', 'owner'))
-        ORDER BY d.updated_at DESC
+      // Primeiro, verificar se a tabela document_collaborators existe
+      const checkTableStmt = env.DB.prepare(`
+        SELECT name FROM sqlite_master 
+        WHERE type='table' AND name='document_collaborators'
       `);
+      const tableCheck = await checkTableStmt.all();
+      const hasCollaboratorsTable = tableCheck.results && tableCheck.results.length > 0;
       
-      const resultContent = await stmtWithContent.bind(
-        currentUserId || '', 
-        currentUserId || '', 
-        currentUserProfile.email || ''
-      ).all();
-      documents = resultContent.results || [];
-      console.log('[GET] ✅ SELECT com content executado, documentos:', documents.length);
+      console.log('[GET] Tabela document_collaborators existe:', hasCollaboratorsTable);
+      
+      if (hasCollaboratorsTable) {
+        // SELECT com controle de ACL avançado
+        console.log('[GET] Buscando documentos com controle de ACL para:', currentUserId);
+        const stmtWithContent = env.DB.prepare(`
+          SELECT DISTINCT d.id, d.title, d.visibility, d.owner_id, d.created_at, d.updated_at, d.content
+          FROM documents d
+          LEFT JOIN document_collaborators dc ON d.id = dc.document_id
+          WHERE 
+            d.visibility = 'public' 
+            OR d.owner_id = ?
+            OR (dc.user_id = ? AND dc.permission IN ('read', 'write', 'owner'))
+            OR (dc.user_email = ? AND dc.permission IN ('read', 'write', 'owner'))
+          ORDER BY d.updated_at DESC
+        `);
+        
+        const resultContent = await stmtWithContent.bind(
+          currentUserId || '', 
+          currentUserId || '', 
+          currentUserProfile.email || ''
+        ).all();
+        documents = resultContent.results || [];
+        console.log('[GET] ✅ SELECT com ACL executado, documentos:', documents.length);
+      } else {
+        // Fallback: buscar apenas documentos do usuário e públicos
+        console.log('[GET] Tabela de colaboradores não existe, usando fallback simples');
+        const stmtSimple = env.DB.prepare(`
+          SELECT id, title, visibility, owner_id, created_at, updated_at, content
+          FROM documents
+          WHERE visibility = 'public' OR owner_id = ?
+          ORDER BY updated_at DESC
+        `);
+        
+        const resultSimple = await stmtSimple.bind(currentUserId || '').all();
+        documents = resultSimple.results || [];
+        console.log('[GET] ✅ SELECT simples executado, documentos:', documents.length);
+      }
+      
       console.log('[GET] Documentos filtrados:', documents.map(d => ({id: d.id, title: d.title, visibility: d.visibility, owner_id: d.owner_id})));
       
-    } catch (contentError) {
-      console.log('[GET] ❌ SELECT com content falhou:', contentError.message);
-      console.log('[GET] Tentando SELECT sem content...');
+    } catch (queryError) {
+      console.error('[GET] ❌ Erro na query principal:', queryError.message);
       
-      const stmtBasic = env.DB.prepare(`
-        SELECT DISTINCT d.id, d.title, d.visibility, d.owner_id, d.created_at, d.updated_at
-        FROM documents d
-        LEFT JOIN document_collaborators dc ON d.id = dc.document_id
-        WHERE 
-          d.visibility = 'public' 
-          OR d.owner_id = ?
-          OR (dc.user_id = ? AND dc.permission IN ('read', 'write', 'owner'))
-          OR (dc.user_email = ? AND dc.permission IN ('read', 'write', 'owner'))
-        ORDER BY d.updated_at DESC
-      `);
-      
-      const resultBasic = await stmtBasic.bind(
-        currentUserId || '', 
-        currentUserId || '', 
-        currentUserProfile.email || ''
-      ).all();
-      documents = (resultBasic.results || []).map(doc => ({
-        ...doc,
-        content: '' // Adicionar content vazio
-      }));
-      
-      console.log('[GET] ✅ SELECT sem content executado, documentos:', documents.length);
+      // Fallback final: buscar apenas documentos básicos
+      try {
+        console.log('[GET] Tentando fallback final...');
+        const stmtBasic = env.DB.prepare(`
+          SELECT id, title, visibility, owner_id, created_at, updated_at
+          FROM documents
+          WHERE visibility = 'public' OR owner_id = ?
+          ORDER BY updated_at DESC
+        `);
+        
+        const resultBasic = await stmtBasic.bind(currentUserId || '').all();
+        documents = (resultBasic.results || []).map(doc => ({
+          ...doc,
+          content: '' // Adicionar content vazio
+        }));
+        
+        console.log('[GET] ✅ Fallback final executado, documentos:', documents.length);
+      } catch (fallbackError) {
+        console.error('[GET] ❌ Fallback final também falhou:', fallbackError.message);
+        // Retornar lista vazia em vez de erro
+        documents = [];
+      }
     }
     
 
-    // Buscar informações dos proprietários da tabela users
+    // Buscar informações dos proprietários da tabela users (se existir)
     const ownerIds = [...new Set(documents.map(doc => doc.owner_id).filter(Boolean))];
     const usersData = {};
     
     if (ownerIds.length > 0) {
       try {
-        const placeholders = ownerIds.map(() => '?').join(',');
-        const usersStmt = env.DB.prepare(`
-          SELECT id, name, email, avatar_url, provider
-          FROM users
-          WHERE id IN (${placeholders})
+        // Verificar se a tabela users existe
+        const checkUsersTable = env.DB.prepare(`
+          SELECT name FROM sqlite_master 
+          WHERE type='table' AND name='users'
         `);
+        const usersTableCheck = await checkUsersTable.all();
+        const hasUsersTable = usersTableCheck.results && usersTableCheck.results.length > 0;
         
-        const usersResult = await usersStmt.bind(...ownerIds).all();
-        (usersResult.results || []).forEach(user => {
-          usersData[user.id] = user;
-        });
-        
-        console.log('[GET] ✅ Dados dos usuários carregados:', Object.keys(usersData).length);
+        if (hasUsersTable) {
+          const placeholders = ownerIds.map(() => '?').join(',');
+          const usersStmt = env.DB.prepare(`
+            SELECT id, name, email, avatar_url, provider
+            FROM users
+            WHERE id IN (${placeholders})
+          `);
+          
+          const usersResult = await usersStmt.bind(...ownerIds).all();
+          (usersResult.results || []).forEach(user => {
+            usersData[user.id] = user;
+          });
+          
+          console.log('[GET] ✅ Dados dos usuários carregados:', Object.keys(usersData).length);
+        } else {
+          console.log('[GET] Tabela users não existe, pulando busca de dados de usuários');
+        }
       } catch (usersError) {
         console.log('[GET] ⚠️ Erro ao buscar usuários:', usersError.message);
       }
@@ -455,7 +491,7 @@ async function debugTables(env: Env, request: Request): Promise<Response> {
   try {
     console.log('[DEBUG] Verificando tabelas...');
     
-    const results = {
+    const results: any = {
       documents: [],
       users: [],
       migrations: []
