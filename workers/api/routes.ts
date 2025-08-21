@@ -92,44 +92,58 @@ async function createDocument(env: Env, request: Request): Promise<Response> {
     const data = await request.json();
     console.log('[CREATE] Dados recebidos:', data);
     
-    // Extrair usuário do token e perfil
+    // Verificar autenticação
     const authorization = request.headers.get('Authorization');
     if (!authorization?.startsWith('Bearer ')) {
-      return new Response(JSON.stringify({ error: 'Token necessário' }), {
+      return new Response(JSON.stringify({ error: 'Token de autenticação necessário' }), {
         status: 401,
         headers: addCORSHeaders({ 'Content-Type': 'application/json' })
       });
     }
 
-    const token = authorization.slice(7);
-    
-    // Extrair perfil real do usuário do header
+    // Extrair perfil REAL do usuário autenticado via NextAuth
     let userProfile = null;
     let userId = '';
     
     try {
       const profileHeader = request.headers.get('X-User-Profile');
-      if (profileHeader) {
-        userProfile = JSON.parse(profileHeader);
-        console.log('[CREATE] Perfil do usuário extraído:', userProfile);
-        
-        // Usar email como base para ID consistente
-        if (userProfile.email && userProfile.email.includes('@')) {
-          const emailHash = userProfile.email.replace('@', '-').replace(/\./g, '-');
-          userId = `user-${emailHash}`;
-        }
+      if (!profileHeader) {
+        throw new Error('Perfil do usuário não fornecido');
       }
+      
+      userProfile = JSON.parse(profileHeader);
+      console.log('[CREATE] Perfil NextAuth recebido:', userProfile);
+      
+      // Validar dados essenciais do perfil
+      if (!userProfile.email || !userProfile.name || !userProfile.id) {
+        throw new Error('Perfil do usuário incompleto');
+      }
+      
+      // Validar formato do email
+      if (!userProfile.email.includes('@') || !userProfile.email.includes('.')) {
+        throw new Error('Email inválido');
+      }
+      
+      // Usar ID do NextAuth (mais seguro) como base para userId
+      userId = `user-${userProfile.id}`;
+      
+      console.log('[CREATE] ✅ Usuário autenticado:', {
+        id: userId,
+        name: userProfile.name,
+        email: userProfile.email,
+        provider: userProfile.provider
+      });
+      
     } catch (e) {
-      console.log('[CREATE] Erro ao extrair perfil:', e.message);
+      console.error('[CREATE] Erro na autenticação:', e.message);
+      return new Response(JSON.stringify({ 
+        error: 'Falha na autenticação do usuário',
+        details: e.message 
+      }), {
+        status: 401,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
     }
-    
-    // Fallback para token hash se não tiver email
-    if (!userId) {
-      const tokenHash = token.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12);
-      userId = `user-${tokenHash}`;
-    }
-    
-    console.log('[CREATE] User ID gerado:', userId);
     
     // Salvar/atualizar perfil do usuário se disponível
     if (userProfile?.name) {
@@ -258,53 +272,75 @@ async function getDocuments(env: Env, request: Request): Promise<Response> {
   try {
     console.log('[GET] Buscando documentos...');
     
-    // Extrair usuário do token para filtrar documentos
+    // Verificar autenticação
     const authorization = request.headers.get('Authorization');
+    if (!authorization?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Token de autenticação necessário' }), {
+        status: 401,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+    
+    // Extrair perfil REAL do usuário autenticado
     let currentUserId = null;
     let currentUserProfile = null;
     
-    if (authorization?.startsWith('Bearer ')) {
-      const token = authorization.slice(7);
-      
-      // Extrair perfil do usuário atual do header
-      try {
-        const profileHeader = request.headers.get('X-User-Profile');
-        if (profileHeader) {
-          currentUserProfile = JSON.parse(profileHeader);
-          console.log('[GET] Perfil do usuário atual:', currentUserProfile);
-          
-          // Usar email como base para ID consistente
-          if (currentUserProfile.email && currentUserProfile.email.includes('@')) {
-            const emailHash = currentUserProfile.email.replace('@', '-').replace(/\./g, '-');
-            currentUserId = `user-${emailHash}`;
-          }
-        }
-      } catch (e) {
-        console.log('[GET] Erro ao extrair perfil:', e.message);
+    try {
+      const profileHeader = request.headers.get('X-User-Profile');
+      if (!profileHeader) {
+        throw new Error('Perfil do usuário não fornecido');
       }
       
-      // Fallback para token hash se não tiver email
-      if (!currentUserId) {
-        const tokenHash = token.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12);
-        currentUserId = `user-${tokenHash}`;
+      currentUserProfile = JSON.parse(profileHeader);
+      console.log('[GET] Perfil NextAuth recebido:', currentUserProfile);
+      
+      // Validar dados essenciais
+      if (!currentUserProfile.email || !currentUserProfile.name || !currentUserProfile.id) {
+        throw new Error('Perfil do usuário incompleto');
       }
       
-      console.log('[GET] Usuário autenticado:', currentUserId);
+      // Usar ID do NextAuth
+      currentUserId = `user-${currentUserProfile.id}`;
+      
+      console.log('[GET] ✅ Usuário autenticado:', {
+        id: currentUserId,
+        name: currentUserProfile.name,
+        email: currentUserProfile.email
+      });
+      
+    } catch (e) {
+      console.error('[GET] Erro na autenticação:', e.message);
+      return new Response(JSON.stringify({ 
+        error: 'Falha na autenticação do usuário',
+        details: e.message 
+      }), {
+        status: 401,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
     }
     
     let documents = [];
     
     try {
-      // Tentar SELECT com content primeiro (filtrando por usuário e documentos públicos)
-      console.log('[GET] Tentando SELECT com content para usuário:', currentUserId);
+      // SELECT com controle de ACL avançado
+      console.log('[GET] Buscando documentos com controle de ACL para:', currentUserId);
       const stmtWithContent = env.DB.prepare(`
-        SELECT id, title, visibility, owner_id, created_at, updated_at, content
-        FROM documents
-        WHERE visibility = 'public' OR owner_id = ?
-        ORDER BY updated_at DESC
+        SELECT DISTINCT d.id, d.title, d.visibility, d.owner_id, d.created_at, d.updated_at, d.content
+        FROM documents d
+        LEFT JOIN document_collaborators dc ON d.id = dc.document_id
+        WHERE 
+          d.visibility = 'public' 
+          OR d.owner_id = ?
+          OR (dc.user_id = ? AND dc.permission IN ('read', 'write', 'owner'))
+          OR (dc.user_email = ? AND dc.permission IN ('read', 'write', 'owner'))
+        ORDER BY d.updated_at DESC
       `);
       
-      const resultContent = await stmtWithContent.bind(currentUserId || '').all();
+      const resultContent = await stmtWithContent.bind(
+        currentUserId || '', 
+        currentUserId || '', 
+        currentUserProfile.email || ''
+      ).all();
       documents = resultContent.results || [];
       console.log('[GET] ✅ SELECT com content executado, documentos:', documents.length);
       console.log('[GET] Documentos filtrados:', documents.map(d => ({id: d.id, title: d.title, visibility: d.visibility, owner_id: d.owner_id})));
@@ -314,13 +350,22 @@ async function getDocuments(env: Env, request: Request): Promise<Response> {
       console.log('[GET] Tentando SELECT sem content...');
       
       const stmtBasic = env.DB.prepare(`
-        SELECT id, title, visibility, owner_id, created_at, updated_at
-        FROM documents
-        WHERE visibility = 'public' OR owner_id = ?
-        ORDER BY updated_at DESC
+        SELECT DISTINCT d.id, d.title, d.visibility, d.owner_id, d.created_at, d.updated_at
+        FROM documents d
+        LEFT JOIN document_collaborators dc ON d.id = dc.document_id
+        WHERE 
+          d.visibility = 'public' 
+          OR d.owner_id = ?
+          OR (dc.user_id = ? AND dc.permission IN ('read', 'write', 'owner'))
+          OR (dc.user_email = ? AND dc.permission IN ('read', 'write', 'owner'))
+        ORDER BY d.updated_at DESC
       `);
       
-      const resultBasic = await stmtBasic.bind(currentUserId || '').all();
+      const resultBasic = await stmtBasic.bind(
+        currentUserId || '', 
+        currentUserId || '', 
+        currentUserProfile.email || ''
+      ).all();
       documents = (resultBasic.results || []).map(doc => ({
         ...doc,
         content: '' // Adicionar content vazio

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { CollaborativeEditor } from '@/components/CollaborativeEditor';
-import { apiService } from '@/lib/api';
+import { secureApiService } from '@/lib/secure-api';
 import type { Document } from '@/types/shared';
 
 export default function DocumentPage({ params }: { params: Promise<{ id: string }> }) {
@@ -20,7 +20,7 @@ export default function DocumentPage({ params }: { params: Promise<{ id: string 
         const documentId = await params.then(p => p.id);
         
         // Carregar documento da API
-        const response = await apiService.getDocument(documentId);
+        const response = await secureApiService.getDocument(documentId);
         setDocument(response.document);
         setIsEditing(editMode);
         setIsLoading(false);

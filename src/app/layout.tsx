@@ -1,7 +1,7 @@
 import { Inter } from 'next/font/google';
-import { AuthProvider } from '@/context/AuthProvider';
 import './globals.css';
 import { Metadata } from 'next';
+import ClientSessionProvider from '@/components/ClientSessionProvider';
 
 const inter = Inter({ 
   subsets: ['latin'],
@@ -25,9 +25,9 @@ export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="pt-BR" className={inter.variable}>
       <body className="font-sans antialiased">
-        <AuthProvider>
+        <ClientSessionProvider>
           {children}
-        </AuthProvider>
+        </ClientSessionProvider>
       </body>
     </html>
   );

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { apiService } from '@/lib/api';
+import { secureApiService } from '@/lib/secure-api';
 import { Button } from './ui/Button';
 import { Card, CardContent } from './ui/Card';
 import { Alert } from './ui/Alert';
@@ -65,7 +65,7 @@ export function CollaborativeEditor({ documentId, initialContent }: Collaborativ
     
     try {
       // Salvar na API
-      await apiService.updateDocument(documentId, { content });
+      await secureApiService.updateDocument(documentId, { content });
       
       setLastSaved(new Date());
       setIsDirty(false);
@@ -89,7 +89,7 @@ export function CollaborativeEditor({ documentId, initialContent }: Collaborativ
     
     try {
       // Salvar na API
-      await apiService.updateDocument(documentId, { content });
+      await secureApiService.updateDocument(documentId, { content });
       
       setLastSaved(new Date());
       setIsDirty(false);
