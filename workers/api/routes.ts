@@ -57,6 +57,11 @@ export default {
           return await getDocuments(env, request);
         }
         
+        if (apiPath.startsWith('/documents/') && method === 'GET') {
+          const documentId = apiPath.split('/')[1];
+          return await getDocument(env, request, documentId);
+        }
+        
         if (apiPath === '/debug' && method === 'GET') {
           return await debugTables(env, request);
         }
@@ -479,6 +484,146 @@ async function getDocuments(env: Env, request: Request): Promise<Response> {
     console.error('[GET] Erro final:', error);
     return new Response(JSON.stringify({ 
       error: 'Erro ao buscar documentos',
+      message: error instanceof Error ? error.message : 'Erro desconhecido'
+    }), {
+      status: 500,
+      headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+    });
+  }
+}
+
+async function getDocument(env: Env, request: Request, documentId: string): Promise<Response> {
+  try {
+    console.log(`[GET_DOC] Buscando documento com ID: ${documentId}`);
+
+    // Verificar autenticação
+    const authorization = request.headers.get('Authorization');
+    if (!authorization?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Token de autenticação necessário' }), {
+        status: 401,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+
+    // Extrair perfil REAL do usuário autenticado
+    let currentUserId: string | null = null;
+    let currentUserProfile: any = null;
+    
+    try {
+      const profileHeader = request.headers.get('X-User-Profile');
+      if (!profileHeader) {
+        throw new Error('Perfil do usuário não fornecido');
+      }
+      
+      currentUserProfile = JSON.parse(profileHeader);
+      console.log('[GET_DOC] Perfil NextAuth recebido:', currentUserProfile);
+      
+      // Validar dados essenciais
+      if (!currentUserProfile.email || !currentUserProfile.name || !currentUserProfile.id) {
+        throw new Error('Perfil do usuário incompleto');
+      }
+      
+      // Usar ID do NextAuth
+      currentUserId = `user-${currentUserProfile.id}`;
+      
+      console.log('[GET_DOC] ✅ Usuário autenticado:', {
+        id: currentUserId,
+        name: currentUserProfile.name,
+        email: currentUserProfile.email
+      });
+      
+    } catch (e) {
+      console.error('[GET_DOC] Erro na autenticação:', e.message);
+      return new Response(JSON.stringify({ 
+        error: 'Falha na autenticação do usuário',
+        details: e.message 
+      }), {
+        status: 401,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+
+    // Verificar permissão do documento
+    const document = await env.DB.prepare(`
+      SELECT d.id, d.owner_id, d.title, d.visibility, d.content, d.created_at, d.updated_at
+      FROM documents d
+      LEFT JOIN document_collaborators dc ON d.id = dc.document_id
+      WHERE d.id = ?
+    `).bind(documentId).first();
+
+    if (!document) {
+      return new Response(JSON.stringify({ error: 'Documento não encontrado' }), {
+        status: 404,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+
+         const isOwner = document.owner_id === currentUserId;
+     
+     // Verificar se é colaborador (simplificado por enquanto)
+     let isCollaborator = false;
+     try {
+       const collaboratorCheck = await env.DB.prepare(`
+         SELECT permission FROM document_collaborators 
+         WHERE document_id = ? AND user_id = ?
+       `).bind(documentId, currentUserId).first();
+       
+       isCollaborator = !!collaboratorCheck;
+     } catch (e) {
+       // Se a tabela não existir, considerar apenas como owner
+       isCollaborator = false;
+     }
+
+    if (!isOwner && !isCollaborator) {
+      return new Response(JSON.stringify({ error: 'Você não tem permissão para acessar este documento' }), {
+        status: 403,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+
+    // Enriquecer documento com informações do proprietário
+    const ownerHash = document.owner_id?.replace('user-', '') || 'demo';
+    const userData = await env.DB.prepare(`
+      SELECT id, name, email, avatar_url, provider
+      FROM users
+      WHERE id = ?
+    `).bind(document.owner_id).first();
+
+    let ownerName = `Usuário ${ownerHash.slice(0, 8)}`;
+    let avatarSeed = ownerHash;
+    let avatarUrl = userData?.avatar_url;
+
+    if (userData?.name) {
+      ownerName = userData.name;
+      avatarSeed = userData.name;
+    } else if (isOwner && currentUserProfile?.name) {
+      ownerName = currentUserProfile.name;
+      avatarSeed = currentUserProfile.name;
+    }
+
+    if (!avatarUrl) {
+      avatarUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(avatarSeed)}`;
+    }
+
+    const enrichedDocument = {
+      ...document,
+      owner_name: ownerName,
+      owner_avatar_url: avatarUrl,
+      is_owner: isOwner
+    };
+
+    return new Response(JSON.stringify({ 
+      document: enrichedDocument,
+      message: 'Documento encontrado com sucesso'
+    }), {
+      status: 200,
+      headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+    });
+
+  } catch (error) {
+    console.error(`[GET_DOC] Erro final:`, error);
+    return new Response(JSON.stringify({ 
+      error: 'Erro ao buscar documento',
       message: error instanceof Error ? error.message : 'Erro desconhecido'
     }), {
       status: 500,
