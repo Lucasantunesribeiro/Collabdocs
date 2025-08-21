@@ -547,7 +547,6 @@ async function getDocument(env: Env, request: Request, documentId: string): Prom
     const document = await env.DB.prepare(`
       SELECT d.id, d.owner_id, d.title, d.visibility, d.content, d.created_at, d.updated_at
       FROM documents d
-      LEFT JOIN document_collaborators dc ON d.id = dc.document_id
       WHERE d.id = ?
     `).bind(documentId).first();
 
@@ -558,23 +557,23 @@ async function getDocument(env: Env, request: Request, documentId: string): Prom
       });
     }
 
-         const isOwner = document.owner_id === currentUserId;
-     
-     // Verificar se é colaborador (simplificado por enquanto)
-     let isCollaborator = false;
-     try {
-       const collaboratorCheck = await env.DB.prepare(`
-         SELECT permission FROM document_collaborators 
-         WHERE document_id = ? AND user_id = ?
-       `).bind(documentId, currentUserId).first();
-       
-       isCollaborator = !!collaboratorCheck;
-     } catch (e) {
-       // Se a tabela não existir, considerar apenas como owner
-       isCollaborator = false;
-     }
+    const isOwner = document.owner_id === currentUserId;
+    
+    // Verificar se é colaborador (simplificado por enquanto)
+    let isCollaborator = false;
+    try {
+      const collaboratorCheck = await env.DB.prepare(`
+        SELECT permission FROM document_collaborators 
+        WHERE document_id = ? AND user_id = ?
+      `).bind(documentId, currentUserId).first();
+      
+      isCollaborator = !!collaboratorCheck;
+    } catch (e) {
+      // Se a tabela não existir, considerar apenas como owner
+      isCollaborator = false;
+    }
 
-    if (!isOwner && !isCollaborator) {
+    if (!isOwner && !isCollaborator && document.visibility !== 'public') {
       return new Response(JSON.stringify({ error: 'Você não tem permissão para acessar este documento' }), {
         status: 403,
         headers: addCORSHeaders({ 'Content-Type': 'application/json' })
@@ -583,11 +582,17 @@ async function getDocument(env: Env, request: Request, documentId: string): Prom
 
     // Enriquecer documento com informações do proprietário
     const ownerHash = document.owner_id?.replace('user-', '') || 'demo';
-    const userData = await env.DB.prepare(`
-      SELECT id, name, email, avatar_url, provider
-      FROM users
-      WHERE id = ?
-    `).bind(document.owner_id).first();
+    let userData: any = null;
+    
+    try {
+      userData = await env.DB.prepare(`
+        SELECT id, name, email, avatar_url, provider
+        FROM users
+        WHERE id = ?
+      `).bind(document.owner_id).first();
+    } catch (e) {
+      console.log('[GET_DOC] Tabela users não existe ou erro ao buscar usuário');
+    }
 
     let ownerName = `Usuário ${ownerHash.slice(0, 8)}`;
     let avatarSeed = ownerHash;
