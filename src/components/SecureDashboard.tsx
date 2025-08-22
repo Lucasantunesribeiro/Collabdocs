@@ -6,6 +6,7 @@ import { secureApiService } from '@/lib/secure-api'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
+import { CreateDocumentModal } from '@/components/CreateDocumentModal'
 import type { Document } from '@/types/shared'
 
 export default function SecureDashboard() {
@@ -13,6 +14,7 @@ export default function SecureDashboard() {
   const [documents, setDocuments] = useState<Document[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [showCreateModal, setShowCreateModal] = useState(false)
 
   useEffect(() => {
     if (status === 'authenticated' && session) {
@@ -47,18 +49,18 @@ export default function SecureDashboard() {
     }
   }
 
-  const handleCreateDocument = async () => {
+  const handleCreateDocument = async (title: string, visibility: 'private' | 'public') => {
     try {
-      console.log('[Dashboard] Criando novo documento...')
+      console.log('[Dashboard] Criando novo documento...', { title, visibility })
       
       if (!session) {
         throw new Error('Sessão não disponível');
       }
       
       const newDoc = await secureApiService.createDocument({
-        title: 'Novo Documento',
-        content: '# Novo Documento\n\nComece a escrever aqui...',
-        visibility: 'public'
+        title: title,
+        content: `# ${title}\n\nComece a escrever aqui...`,
+        visibility: visibility
       }, session)
       
       console.log('[Dashboard] Documento criado:', newDoc.document.id)
@@ -74,6 +76,23 @@ export default function SecureDashboard() {
   const handleSignOut = () => {
     console.log('[Dashboard] Fazendo logout...')
     signOut({ callbackUrl: '/auth/signin' })
+  }
+
+  const handleDeleteDocument = async (documentId: string) => {
+    try {
+      if (!session) {
+        throw new Error('Sessão não disponível');
+      }
+      
+      // TODO: Implementar delete na API
+      console.log('[Dashboard] Deletando documento:', documentId)
+      
+      // Recarregar lista
+      await loadDocuments()
+    } catch (error) {
+      console.error('[Dashboard] Erro ao deletar documento:', error)
+      setError(error instanceof Error ? error.message : 'Erro ao deletar documento')
+    }
   }
 
   if (status === 'loading') {
@@ -147,7 +166,7 @@ export default function SecureDashboard() {
               <p className="text-gray-600">Gerencie seus documentos colaborativos</p>
             </div>
             
-            <Button onClick={handleCreateDocument}>
+            <Button onClick={() => setShowCreateModal(true)}>
               Criar Novo Documento
             </Button>
           </div>
@@ -198,7 +217,7 @@ export default function SecureDashboard() {
             {documents.length === 0 ? (
               <Card className="p-8 text-center">
                 <p className="text-gray-600 mb-4">Nenhum documento encontrado</p>
-                <Button onClick={handleCreateDocument}>
+                <Button onClick={() => setShowCreateModal(true)}>
                   Criar Primeiro Documento
                 </Button>
               </Card>
@@ -237,13 +256,33 @@ export default function SecureDashboard() {
                         </div>
                       </div>
                       
-                      <div className="ml-4">
+                      <div className="ml-4 flex gap-2">
                         <Button 
                           onClick={() => window.location.href = `/document/${document.id}`}
                           size="sm"
                         >
                           Abrir
                         </Button>
+                        
+                        {document.is_owner && (
+                          <>
+                            <Button 
+                              onClick={() => window.location.href = `/document/${document.id}?edit=true`}
+                              size="sm"
+                              variant="secondary"
+                            >
+                              Editar
+                            </Button>
+                            
+                            <Button 
+                              onClick={() => handleDeleteDocument(document.id)}
+                              size="sm"
+                              variant="destructive"
+                            >
+                              Deletar
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </div>
                   </Card>
@@ -253,6 +292,14 @@ export default function SecureDashboard() {
           </div>
         )}
       </main>
+
+      {/* Modal de Criação */}
+      {showCreateModal && (
+        <CreateDocumentModal
+          onClose={() => setShowCreateModal(false)}
+          onCreate={handleCreateDocument}
+        />
+      )}
     </div>
   )
 }

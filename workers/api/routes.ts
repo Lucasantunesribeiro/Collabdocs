@@ -488,7 +488,9 @@ async function createDocument(env: Env, request: Request): Promise<Response> {
     // Gerar dados do documento
     const documentId = crypto.randomUUID();
     const now = new Date().toISOString();
-    const content = data.content || '# Novo Documento\\n\\nComece a escrever aqui...';
+    const title = data.title || 'Novo Documento';
+    const visibility = data.visibility || 'public';
+    const content = data.content || `# ${title}\\n\\nComece a escrever aqui...`;
     
     console.log('[CREATE] Tentando INSERT com estratégia de fallback...');
     
@@ -503,25 +505,25 @@ async function createDocument(env: Env, request: Request): Promise<Response> {
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `);
       
-      result = await stmtWithContent.bind(
-        documentId,
-        userId,
-        data.title || 'Novo Documento',
-        data.visibility || 'public',
-        now,
-        now,
-        content
-      ).run();
-      
-      document = {
-        id: documentId,
-        owner_id: userId,
-        title: data.title || 'Novo Documento',
-        visibility: data.visibility || 'public',
-        created_at: now,
-        updated_at: now,
-        content: content
-      };
+             result = await stmtWithContent.bind(
+         documentId,
+         userId,
+         title,
+         visibility,
+         now,
+         now,
+         content
+       ).run();
+       
+       document = {
+         id: documentId,
+         owner_id: userId,
+         title: title,
+         visibility: visibility,
+         created_at: now,
+         updated_at: now,
+         content: content
+       };
       
       console.log('[CREATE] ✅ Estratégia 1 SUCESSO - INSERT com content');
       
@@ -535,24 +537,24 @@ async function createDocument(env: Env, request: Request): Promise<Response> {
         VALUES (?, ?, ?, ?, ?, ?)
       `);
       
-      result = await stmtWithoutContent.bind(
-        documentId,
-        userId,
-        data.title || 'Novo Documento',
-        data.visibility || 'public',
-        now,
-        now
-      ).run();
-      
-      document = {
-        id: documentId,
-        owner_id: userId,
-        title: data.title || 'Novo Documento',
-        visibility: data.visibility || 'public',
-        created_at: now,
-        updated_at: now,
-        content: '' // Content vazio para compatibilidade
-      };
+             result = await stmtWithoutContent.bind(
+         documentId,
+         userId,
+         title,
+         visibility,
+         now,
+         now
+       ).run();
+       
+       document = {
+         id: documentId,
+         owner_id: userId,
+         title: title,
+         visibility: visibility,
+         created_at: now,
+         updated_at: now,
+         content: '' // Content vazio para compatibilidade
+       };
       
       console.log('[CREATE] ✅ Estratégia 2 SUCESSO - INSERT sem content');
     }
@@ -670,8 +672,8 @@ async function getDocuments(env: Env, request: Request): Promise<Response> {
         documents = resultContent.results || [];
         console.log('[GET] ✅ SELECT com ACL executado, documentos:', documents.length);
       } else {
-        // Fallback: buscar apenas documentos do usuário e públicos
-        console.log('[GET] Tabela de colaboradores não existe, usando fallback simples');
+        // CORREÇÃO: Buscar apenas documentos do usuário atual e públicos
+        console.log('[GET] Tabela de colaboradores não existe, usando fallback seguro');
         const stmtSimple = env.DB.prepare(`
           SELECT id, title, visibility, owner_id, created_at, updated_at, content
           FROM documents
@@ -681,7 +683,7 @@ async function getDocuments(env: Env, request: Request): Promise<Response> {
         
         const resultSimple = await stmtSimple.bind(currentUserId || '').all();
         documents = resultSimple.results || [];
-        console.log('[GET] ✅ SELECT simples executado, documentos:', documents.length);
+        console.log('[GET] ✅ SELECT seguro executado, documentos:', documents.length);
       }
       
       console.log('[GET] Documentos filtrados:', documents.map(d => ({id: d.id, title: d.title, visibility: d.visibility, owner_id: d.owner_id})));
@@ -689,9 +691,9 @@ async function getDocuments(env: Env, request: Request): Promise<Response> {
     } catch (queryError) {
       console.error('[GET] ❌ Erro na query principal:', queryError.message);
       
-      // Fallback final: buscar apenas documentos básicos
+      // CORREÇÃO: Fallback final seguro - apenas documentos do usuário e públicos
       try {
-        console.log('[GET] Tentando fallback final...');
+        console.log('[GET] Tentando fallback final seguro...');
         const stmtBasic = env.DB.prepare(`
           SELECT id, title, visibility, owner_id, created_at, updated_at
           FROM documents
@@ -705,7 +707,7 @@ async function getDocuments(env: Env, request: Request): Promise<Response> {
           content: '' // Adicionar content vazio
         }));
         
-        console.log('[GET] ✅ Fallback final executado, documentos:', documents.length);
+        console.log('[GET] ✅ Fallback final seguro executado, documentos:', documents.length);
       } catch (fallbackError) {
         console.error('[GET] ❌ Fallback final também falhou:', fallbackError.message);
         // Retornar lista vazia em vez de erro
