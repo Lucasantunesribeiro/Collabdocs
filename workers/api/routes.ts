@@ -35,6 +35,19 @@ export default {
       const path = url.pathname;
       const method = request.method;
       
+      // LOGS DETALHADOS PARA DEBUG
+      console.log(`[API] 🚀 REQUISIÇÃO RECEBIDA`);
+      console.log(`[API] URL completa: ${request.url}`);
+      console.log(`[API] Path: ${path}`);
+      console.log(`[API] Method: ${method}`);
+      // Log dos headers principais para debug
+      const headers = {};
+      request.headers.forEach((value, key) => {
+        headers[key] = value;
+      });
+      console.log(`[API] Headers:`, headers);
+      console.log(`[API] Timestamp: ${new Date().toISOString()}`);
+      
       console.log(`[API] ${method} ${path}`);
       
       // Handle CORS preflight
@@ -44,163 +57,347 @@ export default {
           headers: addCORSHeaders()
         });
       }
+
+      // Handle favicon.ico requests
+      if (path === '/favicon.ico') {
+        console.log(`[API] 📎 Favicon request - serving SVG favicon`);
+        const faviconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <rect width="32" height="32" rx="6" fill="#3b82f6"/>
+  <text x="16" y="22" font-family="Arial, sans-serif" font-size="20" font-weight="bold" text-anchor="middle" fill="white">📝</text>
+</svg>`;
+        return new Response(faviconSvg, {
+          status: 200,
+          headers: addCORSHeaders({ 
+            'Content-Type': 'image/svg+xml',
+            'Cache-Control': 'public, max-age=31536000' // Cache por 1 ano
+          })
+        });
+      }
+
+      // Handle root path requests
+      if (path === '/') {
+        console.log(`[API] 🏠 Root request - returning app info`);
+        return new Response(JSON.stringify({
+          app: 'CollabDocs API',
+          version: '1.0.0',
+          status: 'online',
+          timestamp: new Date().toISOString(),
+          endpoints: {
+            documents: '/api/documents',
+            debug: '/api/debug',
+            health: '/api/health'
+          },
+          frontend: 'https://collabdocs-app.vercel.app'
+        }), {
+          status: 200,
+          headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+        });
+      }
       
-          // API routes
-          if (path.startsWith('/api/')) {
-            const apiPath = path.slice(4); // Remove '/api' prefix
-            console.log(`[API] API Path: ${apiPath}`);
+      // API routes
+      if (path.startsWith('/api/')) {
+        const apiPath = path.slice(4); // Remove '/api' prefix
+        console.log(`[API] API Path: ${apiPath}`);
           
-            // 1. ROTA DE TESTE PRIMEIRO (antes de qualquer startsWith)
-            if (apiPath === '/debug/test' && method === 'GET') {
-            console.log(`[API] 🧪 ROTA DE TESTE ATIVADA`);
-            return new Response(JSON.stringify({ 
-              message: 'Rota de teste funcionando',
-              debug: {
-                apiPath: apiPath,
-                method: method,
-                timestamp: new Date().toISOString(),
-                path: path
-              }
-            }), { 
-              status: 200,
-              headers: addCORSHeaders({ 'Content-Type': 'application/json' })
-            });
-          }
+        // 1. ROTA DE TESTE PRIMEIRO (antes de qualquer startsWith)
+        if (apiPath === '/debug/test' && method === 'GET') {
+          console.log(`[API] 🧪 ROTA DE TESTE ATIVADA`);
+          return new Response(JSON.stringify({ 
+            message: 'Rota de teste funcionando',
+            debug: {
+              apiPath: apiPath,
+              method: method,
+              timestamp: new Date().toISOString(),
+              path: path
+            }
+          }), { 
+            status: 200,
+            headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+          });
+        }
           
-            // 2. ROTA DE DEBUG DE DOCUMENTOS (depois da rota específica)
-            if (apiPath.startsWith('/debug/documents/') && method === 'GET') {
-            const pathParts = apiPath.split('/');
-            console.log(`[API] 🚨 DEBUG DOCUMENT ROUTE ATIVADA`);
-            console.log(`[API] Path completo: ${apiPath}`);
-            console.log(`[API] Path parts:`, pathParts);
-            console.log(`[API] Path parts length: ${pathParts.length}`);
-            console.log(`[API] Path parts detalhado:`, pathParts.map((part, index) => `${index}: "${part}"`));
+        // 2. ROTA DE DEBUG DE DOCUMENTOS (depois da rota específica)
+        if (apiPath.startsWith('/debug/documents/') && method === 'GET') {
+          const pathParts = apiPath.split('/');
+          console.log(`[API] 🚨 DEBUG DOCUMENT ROUTE ATIVADA`);
+          console.log(`[API] Path completo: ${apiPath}`);
+          console.log(`[API] Path parts:`, pathParts);
+          console.log(`[API] Path parts length: ${pathParts.length}`);
+          console.log(`[API] Path parts detalhado:`, pathParts.map((part, index) => `${index}: "${part}"`));
+          
+          if (pathParts.length >= 4) {
+            // ANÁLISE: apiPath = "/debug/documents/04ea2a05-e18d-438f-80c2-bd768939dfda"
+            // split('/') = ["", "debug", "documents", "04ea2a05-e18d-438f-80c2-bd768939dfda"]
+            // pathParts[3] = "04ea2a05-e18d-438f-80c2-bd768939dfda" ✅
             
-            if (pathParts.length >= 4) {
-              // ANÁLISE: apiPath = "/debug/documents/04ea2a05-e18d-438f-80c2-bd768939dfda"
-              // split('/') = ["", "debug", "documents", "04ea2a05-e18d-438f-80c2-bd768939dfda"]
-              // pathParts[3] = "04ea2a05-e18d-438f-80c2-bd768939dfda" ✅
-              
-              const documentId = pathParts[3]; // Índice 3 para o UUID (corrigido)
-              console.log(`[API] 🚨 DEBUG DOCUMENT ROUTE ATIVADA - ID: ${documentId}`);
-              console.log(`[API] ID extraído do índice 3: "${documentId}"`);
-              console.log(`[API] Análise completa:`, {
-                apiPath: apiPath,
-                splitResult: pathParts,
-                expectedIndex: 3,
-                actualValue: pathParts[3],
-                isValidUUID: documentId && documentId.length === 36 && documentId.includes('-')
-              });
-              
-              if (documentId && documentId.length === 36 && documentId.includes('-')) {
-                console.log(`[API] ✅ UUID válido, chamando debugDocument...`);
-                return await debugDocument(env, request, documentId);
-              } else {
-                console.error(`[API] ID do documento inválido: "${documentId}"`);
-                return new Response(JSON.stringify({ 
-                  error: 'ID do documento inválido',
-                  debug: {
-                    receivedId: documentId,
-                    pathParts: pathParts,
-                    expectedFormat: 'UUID v4 (36 caracteres com hífens)',
-                    explanation: `apiPath.split("/") resulta em ${JSON.stringify(pathParts)}`,
-                    analysis: {
-                      apiPath: apiPath,
-                      splitResult: pathParts,
-                      expectedIndex: 3,
-                      actualValue: pathParts[3],
-                      isValidUUID: documentId && documentId.length === 36 && documentId.includes('-')
-                    }
-                  }
-                }), { 
-                  status: 400,
-                  headers: addCORSHeaders({ 'Content-Type': 'application/json' })
-                });
-              }
+            const documentId = pathParts[3]; // Índice 3 para o UUID (corrigido)
+            console.log(`[API] 🚨 DEBUG DOCUMENT ROUTE ATIVADA - ID: ${documentId}`);
+            console.log(`[API] ID extraído do índice 3: "${documentId}"`);
+            console.log(`[API] Análise completa:`, {
+              apiPath: apiPath,
+              splitResult: pathParts,
+              expectedIndex: 3,
+              actualValue: pathParts[3],
+              isValidUUID: documentId && documentId.length === 36 && documentId.includes('-')
+            });
+            
+            if (documentId && documentId.length === 36 && documentId.includes('-')) {
+              console.log(`[API] ✅ UUID válido, chamando debugDocument...`);
+              return await debugDocument(env, request, documentId);
             } else {
-              console.error(`[API] Estrutura de URL inválida para debug: ${apiPath}`);
+              console.error(`[API] ID do documento inválido: "${documentId}"`);
               return new Response(JSON.stringify({ 
-                error: 'Estrutura de URL inválida',
+                error: 'ID do documento inválido',
                 debug: {
+                  receivedId: documentId,
                   pathParts: pathParts,
-                  expectedFormat: '/debug/documents/{uuid}'
+                  expectedFormat: 'UUID v4 (36 caracteres com hífens)',
+                  explanation: `apiPath.split("/") resulta em ${JSON.stringify(pathParts)}`,
+                  analysis: {
+                    apiPath: apiPath,
+                    splitResult: pathParts,
+                    expectedIndex: 3,
+                    actualValue: pathParts[3],
+                    isValidUUID: documentId && documentId.length === 36 && documentId.includes('-')
+                  }
                 }
               }), { 
                 status: 400,
                 headers: addCORSHeaders({ 'Content-Type': 'application/json' })
               });
             }
-          }
-        
-            if (apiPath === '/documents' && method === 'POST') {
-              return await createDocument(env, request);
-            }
-            
-            if (apiPath === '/documents' && method === 'GET') {
-              return await getDocuments(env, request);
-            }
-            
-            if (apiPath.startsWith('/documents/') && method === 'GET') {
-              const pathParts = apiPath.split('/');
-              console.log(`[API] Path parts:`, pathParts);
-              
-              if (pathParts.length >= 2) {
-                const documentId = pathParts[1];
-                console.log(`[API] Document ID extraído: "${documentId}"`);
-                
-                if (documentId && documentId.trim() !== '') {
-                  return await getDocument(env, request, documentId);
-                } else {
-                  console.error(`[API] ID do documento vazio ou inválido: "${documentId}"`);
-                  return new Response(JSON.stringify({ error: 'ID do documento inválido' }), { 
-                    status: 400,
-                    headers: addCORSHeaders({ 'Content-Type': 'application/json' })
-                  });
-                }
-              }
-            }
-            
-            if (apiPath === '/debug' && method === 'GET') {
-              return await debugTables(env, request);
-            }
-            
-            console.log(`[API] ❌ Rota não encontrada: ${apiPath}`);
+          } else {
+            console.error(`[API] Estrutura de URL inválida para debug: ${apiPath}`);
             return new Response(JSON.stringify({ 
-              error: 'Not Found',
+              error: 'Estrutura de URL inválida',
               debug: {
-                requestedPath: path,
-                apiPath: apiPath,
-                method: method,
-                availableRoutes: [
-                  '/documents', 
-                  '/debug', 
-                  '/debug/test',
-                  '/debug/documents/{id}'
-                ],
-                explanation: 'Verifique se a URL está correta e se o método HTTP é suportado'
+                pathParts: pathParts,
+                expectedFormat: '/debug/documents/{uuid}'
               }
             }), { 
-              status: 404,
+              status: 400,
               headers: addCORSHeaders({ 'Content-Type': 'application/json' })
             });
           }
+        }
+        
+        if (apiPath === '/documents' && method === 'POST') {
+          return await createDocument(env, request);
+        }
+        
+        if (apiPath === '/documents' && method === 'GET') {
+          return await getDocuments(env, request);
+        }
+        
+        if (apiPath.startsWith('/documents/') && apiPath.endsWith('/collaborators') && method === 'GET') {
+          console.log(`[API] 🎯 ROTA DE COLABORADORES ATIVADA`);
+          console.log(`[API] apiPath: "${apiPath}"`);
+          console.log(`[API] method: "${method}"`);
+          
+          const pathParts = apiPath.split('/');
+          console.log(`[API] Path parts:`, pathParts);
+          
+          if (pathParts.length >= 4) {
+            const documentId = pathParts[2];
+            console.log(`[API] Document ID extraído: "${documentId}"`);
+            
+            if (documentId && documentId.length === 36 && documentId.includes('-')) {
+              console.log(`[API] ✅ UUID válido, chamando getDocumentCollaborators...`);
+              return await getDocumentCollaborators(env, request, documentId);
+            } else {
+              console.error(`[API] ❌ ID do documento inválido: "${documentId}"`);
+              return new Response(JSON.stringify({ 
+                error: 'ID do documento inválido',
+                debug: {
+                  receivedId: documentId,
+                  pathParts: pathParts,
+                  expectedFormat: 'UUID v4 (36 caracteres com hífens)'
+                }
+              }), { 
+                status: 400,
+                headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+              });
+            }
+          } else {
+            console.error(`[API] ❌ Estrutura de URL inválida para colaboradores: ${apiPath}`);
+            return new Response(JSON.stringify({ 
+              error: 'Estrutura de URL inválida',
+              debug: {
+                apiPath: apiPath,
+                pathParts: pathParts,
+                expectedFormat: '/documents/{id}/collaborators'
+              }
+            }), { 
+              status: 400,
+              headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+            });
+          }
+        }
 
-          return new Response(JSON.stringify({ error: 'Not Found' }), { 
-            status: 404,
-            headers: addCORSHeaders({ 'Content-Type': 'application/json' })
-          });
-        } catch (error) {
-          console.error('[API] Error:', error);
-          return new Response(JSON.stringify({ 
-            error: 'Internal Server Error',
-            message: error instanceof Error ? error.message : 'Unknown error'
-          }), { 
-            status: 500,
+        if (apiPath.startsWith('/documents/') && method === 'GET') {
+          console.log(`[API] 🎯 ROTA DE DOCUMENTO ESPECÍFICO GET ATIVADA`);
+          console.log(`[API] apiPath: "${apiPath}"`);
+          console.log(`[API] method: "${method}"`);
+          
+          const pathParts = apiPath.split('/');
+          console.log(`[API] Path parts:`, pathParts);
+          console.log(`[API] Path parts length: ${pathParts.length}`);
+          console.log(`[API] Path parts detalhado:`, pathParts.map((part, index) => `${index}: "${part}"`));
+          
+          // CORREÇÃO: Mudança na condição e índice
+          if (pathParts.length >= 3) {
+            // apiPath = "/documents/82379623-3f41-4aea-a149-676998c6f293"
+            // split('/') = ["", "documents", "82379623-3f41-4aea-a149-676998c6f293"]
+            // pathParts[2] = "82379623-3f41-4aea-a149-676998c6f293" ✅
+            
+            const documentId = pathParts[2]; // CORREÇÃO: Índice 2 para o UUID
+            console.log(`[API] Document ID extraído: "${documentId}"`);
+            console.log(`[API] ID válido: ${documentId && documentId.length === 36 && documentId.includes('-')}`);
+            
+            if (documentId && documentId.length === 36 && documentId.includes('-')) {
+              console.log(`[API] ✅ UUID válido, chamando getDocument...`);
+              return await getDocument(env, request, documentId);
+            } else {
+              console.error(`[API] ❌ ID do documento inválido: "${documentId}"`);
+              return new Response(JSON.stringify({ 
+                error: 'ID do documento inválido',
+                debug: {
+                  receivedId: documentId,
+                  pathParts: pathParts,
+                  expectedFormat: 'UUID v4 (36 caracteres com hífens)',
+                  explanation: `apiPath.split("/") resulta em ${JSON.stringify(pathParts)}`,
+                  analysis: {
+                    apiPath: apiPath,
+                    splitResult: pathParts,
+                    expectedIndex: 2,
+                    actualValue: pathParts[2],
+                    isValidUUID: documentId && documentId.length === 36 && documentId.includes('-')
+                  }
+                }
+              }), { 
+                status: 400,
+                headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+              });
+            }
+          } else {
+            console.error(`[API] ❌ Estrutura de URL inválida: ${apiPath}`);
+            console.error(`[API] Path parts length: ${pathParts.length}, esperado: >= 3`);
+          }
+        }
+
+        if (apiPath.startsWith('/documents/') && method === 'PUT') {
+          console.log(`[API] 🎯 ROTA DE DOCUMENTO ESPECÍFICO PUT ATIVADA`);
+          console.log(`[API] apiPath: "${apiPath}"`);
+          console.log(`[API] method: "${method}"`);
+          
+          const pathParts = apiPath.split('/');
+          console.log(`[API] Path parts:`, pathParts);
+          console.log(`[API] Path parts length: ${pathParts.length}`);
+          
+          if (pathParts.length >= 3) {
+            const documentId = pathParts[2];
+            console.log(`[API] Document ID extraído: "${documentId}"`);
+            console.log(`[API] ID válido: ${documentId && documentId.length === 36 && documentId.includes('-')}`);
+            
+            if (documentId && documentId.length === 36 && documentId.includes('-')) {
+              console.log(`[API] ✅ UUID válido, chamando updateDocument...`);
+              return await updateDocument(env, request, documentId);
+            } else {
+              console.error(`[API] ❌ ID do documento inválido: "${documentId}"`);
+              return new Response(JSON.stringify({ 
+                error: 'ID do documento inválido',
+                debug: {
+                  receivedId: documentId,
+                  pathParts: pathParts,
+                  expectedFormat: 'UUID v4 (36 caracteres com hífens)'
+                }
+              }), { 
+                status: 400,
+                headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+              });
+            }
+          } else {
+            console.error(`[API] ❌ Estrutura de URL inválida para PUT: ${apiPath}`);
+            console.error(`[API] Path parts length: ${pathParts.length}, esperado: >= 3`);
+            return new Response(JSON.stringify({ 
+              error: 'Estrutura de URL inválida',
+              debug: {
+                apiPath: apiPath,
+                pathParts: pathParts,
+                expectedLength: 3
+              }
+            }), { 
+              status: 400,
+              headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+            });
+          }
+                }
+          
+        if (apiPath === '/debug' && method === 'GET') {
+          return await debugTables(env, request);
+        }
+
+        // Health check endpoint
+        if (apiPath === '/health' && method === 'GET') {
+          console.log(`[API] 🏥 Health check request`);
+          return new Response(JSON.stringify({
+            status: 'healthy',
+            timestamp: new Date().toISOString(),
+            version: '1.0.0',
+            database: 'connected'
+          }), {
+            status: 200,
             headers: addCORSHeaders({ 'Content-Type': 'application/json' })
           });
         }
+            
+        console.log(`[API] ❌ ROTA NÃO ENCONTRADA`);
+        console.log(`[API] apiPath: "${apiPath}"`);
+        console.log(`[API] method: "${method}"`);
+        console.log(`[API] path: "${path}"`);
+        console.log(`[API] Rotas disponíveis:`, [
+          '/documents', 
+          '/debug', 
+          '/debug/test',
+          '/debug/documents/{id}'
+        ]);
+        
+        return new Response(JSON.stringify({ 
+          error: 'Not Found',
+          debug: {
+            requestedPath: path,
+            apiPath: apiPath,
+            method: method,
+            availableRoutes: [
+              '/documents', 
+              '/debug', 
+              '/debug/test',
+              '/debug/documents/{id}'
+            ],
+            explanation: 'Verifique se a URL está correta e se o método HTTP é suportado'
+          }
+        }), { 
+          status: 404,
+          headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+        });
       }
-    };
+
+      return new Response(JSON.stringify({ error: 'Not Found' }), { 
+        status: 404,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    } catch (error) {
+      console.error('[API] Error:', error);
+      return new Response(JSON.stringify({ 
+        error: 'Internal Server Error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      }), { 
+        status: 500,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+  }
+};
 
 async function createDocument(env: Env, request: Request): Promise<Response> {
   try {
@@ -518,7 +715,7 @@ async function getDocuments(env: Env, request: Request): Promise<Response> {
     
 
     // Buscar informações dos proprietários da tabela users (se existir)
-    const ownerIds = [...new Set(documents.map(doc => doc.owner_id).filter(Boolean))];
+    const ownerIds = Array.from(new Set(documents.map(doc => doc.owner_id).filter(Boolean)));
     const usersData = {};
     
     if (ownerIds.length > 0) {
@@ -622,12 +819,19 @@ async function getDocument(env: Env, request: Request, documentId: string): Prom
 
     // Verificar autenticação
     const authorization = request.headers.get('Authorization');
+    console.log('[GET_DOC] 🔍 Verificando autenticação...');
+    console.log('[GET_DOC] Authorization header:', authorization);
+    console.log('[GET_DOC] Headers completos:', Object.fromEntries(request.headers.entries()));
+    
     if (!authorization?.startsWith('Bearer ')) {
+      console.error('[GET_DOC] ❌ Token de autenticação inválido ou ausente');
       return new Response(JSON.stringify({ error: 'Token de autenticação necessário' }), {
         status: 401,
         headers: addCORSHeaders({ 'Content-Type': 'application/json' })
       });
     }
+    
+    console.log('[GET_DOC] ✅ Token de autorização válido');
 
     // Extrair perfil REAL do usuário autenticado
     let currentUserId: string | null = null;
@@ -820,6 +1024,472 @@ async function getDocument(env: Env, request: Request, documentId: string): Prom
     console.error(`[GET_DOC] Erro final:`, error);
     return new Response(JSON.stringify({ 
       error: 'Erro ao buscar documento',
+      message: error instanceof Error ? error.message : 'Erro desconhecido'
+    }), {
+      status: 500,
+      headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+    });
+  }
+}
+
+async function updateDocument(env: Env, request: Request, documentId: string): Promise<Response> {
+  try {
+    console.log(`[UPDATE_DOC] Atualizando documento com ID: "${documentId}"`);
+    console.log(`[UPDATE_DOC] Tipo do ID: ${typeof documentId}`);
+    console.log(`[UPDATE_DOC] Comprimento do ID: ${documentId?.length}`);
+
+    // Validação do ID
+    if (!documentId || documentId.trim() === '') {
+      console.error(`[UPDATE_DOC] ID do documento inválido: "${documentId}"`);
+      return new Response(JSON.stringify({ error: 'ID do documento inválido' }), {
+        status: 400,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+
+    // Verificar autenticação
+    const authorization = request.headers.get('Authorization');
+    console.log('[UPDATE_DOC] 🔍 Verificando autenticação...');
+    console.log('[UPDATE_DOC] Authorization header:', authorization);
+    
+    if (!authorization?.startsWith('Bearer ')) {
+      console.error('[UPDATE_DOC] ❌ Token de autenticação inválido ou ausente');
+      return new Response(JSON.stringify({ error: 'Token de autenticação necessário' }), {
+        status: 401,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+    
+    console.log('[UPDATE_DOC] ✅ Token de autorização válido');
+
+    // Extrair perfil REAL do usuário autenticado
+    let currentUserId: string | null = null;
+    let currentUserProfile: any = null;
+    
+    try {
+      const profileHeader = request.headers.get('X-User-Profile');
+      if (!profileHeader) {
+        throw new Error('Perfil do usuário não fornecido');
+      }
+      
+      currentUserProfile = JSON.parse(profileHeader);
+      console.log('[UPDATE_DOC] Perfil NextAuth recebido:', currentUserProfile);
+      
+      // Validar dados essenciais
+      if (!currentUserProfile.email || !currentUserProfile.name || !currentUserProfile.id) {
+        throw new Error('Perfil do usuário incompleto');
+      }
+      
+      // Usar ID do NextAuth
+      currentUserId = `user-${currentUserProfile.id}`;
+      
+      console.log('[UPDATE_DOC] ✅ Usuário autenticado:', {
+        id: currentUserId,
+        name: currentUserProfile.name,
+        email: currentUserProfile.email
+      });
+      
+    } catch (e) {
+      console.error('[UPDATE_DOC] Erro na autenticação:', e.message);
+      return new Response(JSON.stringify({ 
+        error: 'Falha na autenticação do usuário',
+        details: e.message 
+      }), {
+        status: 401,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+
+    // Extrair dados da requisição
+    let updateData: any = {};
+    try {
+      updateData = await request.json();
+      console.log('[UPDATE_DOC] Dados recebidos:', updateData);
+    } catch (e) {
+      console.error('[UPDATE_DOC] Erro ao parsear JSON:', e.message);
+      return new Response(JSON.stringify({ 
+        error: 'Dados inválidos',
+        details: 'JSON malformado' 
+      }), {
+        status: 400,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+
+    // Verificar se o documento existe e se o usuário tem permissão
+    console.log(`[UPDATE_DOC] Executando query para ID: "${documentId}"`);
+    
+    const document = await env.DB.prepare(`
+      SELECT d.id, d.owner_id, d.title, d.visibility, d.content, d.created_at, d.updated_at
+      FROM documents d
+      WHERE d.id = ?
+    `).bind(documentId).first();
+
+    console.log(`[UPDATE_DOC] Resultado da query:`, document);
+
+    if (!document) {
+      console.error(`[UPDATE_DOC] Documento não encontrado para ID: "${documentId}"`);
+      return new Response(JSON.stringify({ 
+        error: 'Documento não encontrado',
+        details: `ID: ${documentId}`
+      }), {
+        status: 404,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+
+    // Verificar permissões
+    const isOwner = document.owner_id === currentUserId;
+    console.log(`[UPDATE_DOC] Verificando permissões:`, {
+      documentOwner: document.owner_id,
+      currentUser: currentUserId,
+      isOwner: isOwner,
+      documentVisibility: document.visibility
+    });
+    
+    // Verificar se é colaborador com permissão de escrita
+    let canWrite = isOwner;
+    try {
+      const collaboratorCheck = await env.DB.prepare(`
+        SELECT permission FROM document_collaborators 
+        WHERE document_id = ? AND user_id = ? AND permission IN ('write', 'owner')
+      `).bind(documentId, currentUserId).first();
+      
+      if (collaboratorCheck) {
+        canWrite = true;
+        console.log(`[UPDATE_DOC] É colaborador com permissão de escrita`);
+      }
+    } catch (e) {
+      // Se a tabela não existir, considerar apenas como owner
+      console.log(`[UPDATE_DOC] Tabela de colaboradores não existe`);
+    }
+
+    if (!canWrite) {
+      console.error(`[UPDATE_DOC] ❌ ACESSO NEGADO - Usuário não tem permissão de escrita`);
+      console.error(`[UPDATE_DOC] Detalhes:`, {
+        isOwner,
+        canWrite,
+        visibility: document.visibility,
+        currentUser: currentUserId,
+        documentOwner: document.owner_id
+      });
+      
+      return new Response(JSON.stringify({ 
+        error: 'Você não tem permissão para editar este documento',
+        details: {
+          reason: 'Permissão de escrita necessária',
+          documentId: documentId,
+          currentUser: currentUserId,
+          documentOwner: document.owner_id
+        }
+      }), {
+        status: 403,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+
+    console.log(`[UPDATE_DOC] ✅ Permissão de escrita concedida - atualizando documento`);
+
+    // Preparar dados para atualização
+    const updateFields: string[] = [];
+    const updateValues: any[] = [];
+    
+    if (updateData.content !== undefined) {
+      updateFields.push('content = ?');
+      updateValues.push(updateData.content);
+    }
+    
+    if (updateData.title !== undefined) {
+      updateFields.push('title = ?');
+      updateValues.push(updateData.title);
+    }
+    
+    if (updateFields.length === 0) {
+      return new Response(JSON.stringify({ 
+        error: 'Nenhum campo para atualizar',
+        details: 'Forneça pelo menos content ou title'
+      }), {
+        status: 400,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+
+    // Adicionar updated_at
+    updateFields.push('updated_at = ?');
+    updateValues.push(new Date().toISOString());
+    
+    // Adicionar documentId no final
+    updateValues.push(documentId);
+
+    // Executar atualização
+    const updateQuery = `
+      UPDATE documents 
+      SET ${updateFields.join(', ')}
+      WHERE id = ?
+    `;
+    
+    console.log('[UPDATE_DOC] Query de atualização:', updateQuery);
+    console.log('[UPDATE_DOC] Valores:', updateValues);
+
+    const updateResult = await env.DB.prepare(updateQuery).bind(...updateValues).run();
+    console.log('[UPDATE_DOC] Resultado da atualização:', updateResult);
+
+    if (!updateResult.success) {
+      throw new Error('Falha ao atualizar documento na base de dados');
+    }
+
+    // Buscar documento atualizado
+    const updatedDocument = await env.DB.prepare(`
+      SELECT d.id, d.owner_id, d.title, d.visibility, d.content, d.created_at, d.updated_at
+      FROM documents d
+      WHERE d.id = ?
+    `).bind(documentId).first();
+
+    console.log('[UPDATE_DOC] Documento atualizado:', updatedDocument);
+
+    // Enriquecer documento com informações do proprietário (mesmo código do GET)
+    const ownerHash = updatedDocument.owner_id?.replace('user-', '') || 'demo';
+    let userData: any = null;
+    
+    try {
+      userData = await env.DB.prepare(`
+        SELECT id, name, email, avatar_url, provider
+        FROM users
+        WHERE id = ?
+      `).bind(updatedDocument.owner_id).first();
+    } catch (e) {
+      console.log('[UPDATE_DOC] Tabela users não existe ou erro ao buscar usuário');
+    }
+
+    let ownerName = `Usuário ${ownerHash.slice(0, 8)}`;
+    let avatarSeed = ownerHash;
+    let avatarUrl = userData?.avatar_url;
+
+    if (userData?.name) {
+      ownerName = userData.name;
+      avatarSeed = userData.name;
+    } else if (isOwner && currentUserProfile?.name) {
+      ownerName = currentUserProfile.name;
+      avatarSeed = currentUserProfile.name;
+    }
+
+    if (!avatarUrl) {
+      avatarUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(avatarSeed)}`;
+    }
+
+    const enrichedDocument = {
+      ...updatedDocument,
+      owner_name: ownerName,
+      owner_avatar_url: avatarUrl,
+      is_owner: isOwner
+    };
+
+    return new Response(JSON.stringify({ 
+      document: enrichedDocument,
+      message: 'Documento atualizado com sucesso'
+    }), {
+      status: 200,
+      headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+    });
+
+  } catch (error) {
+    console.error(`[UPDATE_DOC] Erro final:`, error);
+    return new Response(JSON.stringify({ 
+      error: 'Erro ao atualizar documento',
+      message: error instanceof Error ? error.message : 'Erro desconhecido'
+    }), {
+      status: 500,
+      headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+    });
+  }
+}
+
+async function getDocumentCollaborators(env: Env, request: Request, documentId: string): Promise<Response> {
+  try {
+    console.log(`[COLLAB] Buscando colaboradores para documento: "${documentId}"`);
+
+    // Verificar autenticação
+    const authorization = request.headers.get('Authorization');
+    if (!authorization?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Token de autenticação necessário' }), {
+        status: 401,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+
+    // Extrair perfil do usuário autenticado
+    let currentUserId: string | null = null;
+    let currentUserProfile: any = null;
+    
+    try {
+      const profileHeader = request.headers.get('X-User-Profile');
+      if (!profileHeader) {
+        throw new Error('Perfil do usuário não fornecido');
+      }
+      
+      currentUserProfile = JSON.parse(profileHeader);
+      currentUserId = `user-${currentUserProfile.id}`;
+      
+      console.log('[COLLAB] ✅ Usuário autenticado:', {
+        id: currentUserId,
+        name: currentUserProfile.name,
+        email: currentUserProfile.email
+      });
+      
+    } catch (e) {
+      console.error('[COLLAB] Erro na autenticação:', e.message);
+      return new Response(JSON.stringify({ 
+        error: 'Falha na autenticação do usuário',
+        details: e.message 
+      }), {
+        status: 401,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+
+    // Verificar se o documento existe
+    const document = await env.DB.prepare(`
+      SELECT id, owner_id, visibility
+      FROM documents
+      WHERE id = ?
+    `).bind(documentId).first();
+
+    if (!document) {
+      return new Response(JSON.stringify({ 
+        error: 'Documento não encontrado',
+        details: `ID: ${documentId}`
+      }), {
+        status: 404,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+
+    // Buscar colaboradores ativos
+    let collaborators: any[] = [];
+    
+    try {
+      // Verificar se a tabela de colaboradores existe
+      const checkTableStmt = env.DB.prepare(`
+        SELECT name FROM sqlite_master 
+        WHERE type='table' AND name='document_collaborators'
+      `);
+      const tableCheck = await checkTableStmt.all();
+      const hasCollaboratorsTable = tableCheck.results && tableCheck.results.length > 0;
+      
+      if (hasCollaboratorsTable) {
+        // Buscar colaboradores da tabela
+        const collabStmt = env.DB.prepare(`
+          SELECT 
+            dc.user_id,
+            dc.user_email,
+            dc.permission,
+            u.name,
+            u.avatar_url,
+            u.provider
+          FROM document_collaborators dc
+          LEFT JOIN users u ON dc.user_id = u.id
+          WHERE dc.document_id = ?
+          ORDER BY 
+            CASE dc.permission 
+              WHEN 'owner' THEN 1 
+              WHEN 'write' THEN 2 
+              WHEN 'read' THEN 3 
+              ELSE 4 
+            END,
+            u.name ASC
+        `);
+        
+        const collabResult = await collabStmt.bind(documentId).all();
+        collaborators = collabResult.results || [];
+        
+        console.log('[COLLAB] ✅ Colaboradores encontrados:', collaborators.length);
+      } else {
+        console.log('[COLLAB] Tabela de colaboradores não existe, usando apenas proprietário');
+      }
+    } catch (e) {
+      console.error('[COLLAB] Erro ao buscar colaboradores:', e.message);
+    }
+
+    // Se não há colaboradores na tabela, incluir pelo menos o proprietário
+    if (collaborators.length === 0) {
+      try {
+        const ownerStmt = env.DB.prepare(`
+          SELECT 
+            id,
+            name,
+            email,
+            avatar_url,
+            provider
+          FROM users
+          WHERE id = ?
+        `).bind(document.owner_id).first();
+        
+        if (ownerStmt) {
+          collaborators.push({
+            user_id: document.owner_id,
+            user_email: ownerStmt.email || 'owner@unknown.com',
+            permission: 'owner',
+            name: ownerStmt.name || 'Proprietário',
+            avatar_url: ownerStmt.avatar_url,
+            provider: ownerStmt.provider || 'unknown'
+          });
+        }
+      } catch (e) {
+        console.log('[COLLAB] Erro ao buscar proprietário:', e.message);
+        // Fallback: criar colaborador básico
+        collaborators.push({
+          user_id: document.owner_id,
+          user_email: 'owner@unknown.com',
+          permission: 'owner',
+          name: 'Proprietário',
+          avatar_url: null,
+          provider: 'unknown'
+        });
+      }
+    }
+
+    // Enriquecer colaboradores com informações adicionais
+    const enrichedCollaborators = collaborators.map(collab => {
+      const isCurrentUser = collab.user_id === currentUserId;
+      const isOwner = collab.permission === 'owner';
+      const canEdit = collab.permission === 'owner' || collab.permission === 'write';
+      
+      // Gerar avatar se não existir
+      let avatarUrl = collab.avatar_url;
+      if (!avatarUrl) {
+        const seed = collab.name || collab.user_email || collab.user_id;
+        avatarUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(seed)}`;
+      }
+
+      return {
+        id: collab.user_id,
+        email: collab.user_email,
+        name: collab.name || `Usuário ${collab.user_id.slice(-8)}`,
+        permission: collab.permission,
+        avatar_url: avatarUrl,
+        provider: collab.provider,
+        is_current_user: isCurrentUser,
+        is_owner: isOwner,
+        can_edit: canEdit,
+        status: isCurrentUser ? 'editando' : (canEdit ? 'disponível' : 'visualizando')
+      };
+    });
+
+    console.log('[COLLAB] ✅ Colaboradores enriquecidos:', enrichedCollaborators.length);
+
+    return new Response(JSON.stringify({ 
+      collaborators: enrichedCollaborators,
+      document_id: documentId,
+      total: enrichedCollaborators.length
+    }), {
+      status: 200,
+      headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+    });
+
+  } catch (error) {
+    console.error(`[COLLAB] Erro final:`, error);
+    return new Response(JSON.stringify({ 
+      error: 'Erro ao buscar colaboradores',
       message: error instanceof Error ? error.message : 'Erro desconhecido'
     }), {
       status: 500,

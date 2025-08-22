@@ -45,7 +45,7 @@ export const authOptions: NextAuthOptions = {
         })
         
         token.provider = account.provider as 'github' | 'google'
-        token.accessToken = account.access_token || ''
+        token.accessToken = account.access_token || account.accessToken || ''
         
         // Garantir que temos os dados essenciais
         token.name = user.name || profile?.name || ''

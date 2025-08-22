@@ -73,8 +73,8 @@ class SecureApiService {
     const config: RequestInit = {
       headers: {
         'Content-Type': 'application/json',
-        // Usar token NextAuth ao invés de token custom
-        'Authorization': `Bearer ${session.accessToken || session.user.id}`,
+        // Usar token NextAuth ou ID do usuário como fallback
+        'Authorization': `Bearer ${session.accessToken || session.user.id || 'fallback-token'}`,
         // Enviar dados reais do usuário autenticado
         'X-User-Profile': JSON.stringify({
           id: session.user.id,
@@ -179,6 +179,13 @@ class SecureApiService {
    */
   async checkDocumentPermission(documentId: string, session: NextAuthSession): Promise<{ hasAccess: boolean; permission: string }> {
     return this.authenticatedRequest<{ hasAccess: boolean; permission: string }>(`/documents/${documentId}/permission`, session)
+  }
+
+  /**
+   * Obter colaboradores ativos de um documento
+   */
+  async getDocumentCollaborators(documentId: string, session: NextAuthSession): Promise<{ collaborators: any[]; total: number }> {
+    return this.authenticatedRequest<{ collaborators: any[]; total: number }>(`/documents/${documentId}/collaborators`, session)
   }
 }
 

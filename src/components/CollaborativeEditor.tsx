@@ -36,6 +36,8 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
   const [lastSaved, setLastSaved] = useState<Date>(new Date());
   const [isDirty, setIsDirty] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
+  const [collaborators, setCollaborators] = useState<any[]>([]);
+  const [isLoadingCollaborators, setIsLoadingCollaborators] = useState(true);
 
   // Salvamento automático
   useEffect(() => {
@@ -111,6 +113,31 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
     }
   };
 
+  // Carregar colaboradores
+  const loadCollaborators = async () => {
+    try {
+      setIsLoadingCollaborators(true);
+      const response = await secureApiService.getDocumentCollaborators(documentId, session);
+      setCollaborators(response.collaborators || []);
+    } catch (error) {
+      console.error('Erro ao carregar colaboradores:', error);
+      // Fallback: criar colaborador básico para o usuário atual
+      setCollaborators([{
+        id: `user-${session.user.id}`,
+        name: session.user.name || 'Você',
+        email: session.user.email,
+        permission: 'owner',
+        avatar_url: session.user.image,
+        is_current_user: true,
+        is_owner: true,
+        can_edit: true,
+        status: 'editando'
+      }]);
+    } finally {
+      setIsLoadingCollaborators(false);
+    }
+  };
+
   // Carregar conteúdo salvo ao inicializar
   useEffect(() => {
     const savedContent = localStorage.getItem(`collabdocs_document_${documentId}_content`);
@@ -125,6 +152,13 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
       setLastSaved(new Date(savedLastSaved));
     }
   }, [documentId]);
+
+  // Carregar colaboradores ao inicializar
+  useEffect(() => {
+    if (session && documentId) {
+      loadCollaborators();
+    }
+  }, [session, documentId]);
 
   const formatTimeAgo = (date: Date) => {
     const now = new Date();
@@ -261,36 +295,61 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
               <CardContent>
                 <div className="flex items-center gap-2 mb-4">
                   <Users className="w-5 h-5 text-text-600" />
-                  <h4 className="font-medium text-text-900">Colaboradores Online</h4>
+                  <h4 className="font-medium text-text-900">Colaboradores</h4>
+                  {isLoadingCollaborators && (
+                    <div className="w-4 h-4 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
+                  )}
                 </div>
                 <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
-                      <span className="text-sm font-medium text-primary-600">V</span>
+                  {collaborators.length === 0 ? (
+                    <div className="text-center py-4">
+                      <p className="text-sm text-text-500">Carregando colaboradores...</p>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-text-900">Você</p>
-                      <p className="text-xs text-text-500">Editando...</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-success-100 rounded-full flex items-center justify-center">
-                      <span className="text-sm font-medium text-success-600">J</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-text-900">João Silva</p>
-                      <p className="text-xs text-text-500">Visualizando</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-warning-100 rounded-full flex items-center justify-center">
-                      <span className="text-sm font-medium text-warning-600">M</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-text-900">Maria Santos</p>
-                      <p className="text-xs text-text-500">Editando...</p>
-                    </div>
-                  </div>
+                  ) : (
+                    collaborators.map((collaborator) => (
+                      <div key={collaborator.id} className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                          collaborator.is_current_user 
+                            ? 'bg-primary-100' 
+                            : collaborator.is_owner 
+                              ? 'bg-warning-100' 
+                              : 'bg-success-100'
+                        }`}>
+                          {collaborator.avatar_url ? (
+                            <img 
+                              src={collaborator.avatar_url} 
+                              alt={collaborator.name}
+                              className="w-8 h-8 rounded-full object-cover"
+                            />
+                          ) : (
+                            <span className={`text-sm font-medium ${
+                              collaborator.is_current_user 
+                                ? 'text-primary-600' 
+                                : collaborator.is_owner 
+                                  ? 'text-warning-600' 
+                                  : 'text-success-600'
+                            }`}>
+                              {collaborator.name.charAt(0).toUpperCase()}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-text-900">
+                            {collaborator.name}
+                            {collaborator.is_current_user && (
+                              <span className="ml-2 text-xs text-primary-600">(Você)</span>
+                            )}
+                            {collaborator.is_owner && (
+                              <span className="ml-2 text-xs text-warning-600">(Proprietário)</span>
+                            )}
+                          </p>
+                          <p className="text-xs text-text-500 capitalize">
+                            {collaborator.status}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </CardContent>
             </Card>

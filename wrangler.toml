@@ -9,3 +9,8 @@ vars = { ENVIRONMENT = "production" }
 binding = "DB"
 database_name = "COLLAB_DOCS_DB"
 database_id = "e0a23c1f-745b-48cd-8269-08aa103a4434"
+
+# Configurações de observabilidade e logs
+[observability]
+enabled = true
+head_sampling_rate = 1

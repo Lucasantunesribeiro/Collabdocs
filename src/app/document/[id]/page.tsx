@@ -43,6 +43,13 @@ export default function DocumentPage() {
         }
         
         console.log('[DocumentPage] Carregando documento:', documentId);
+        console.log('[DocumentPage] Sessão disponível:', {
+          hasSession: !!session,
+          userId: session?.user?.id,
+          userName: session?.user?.name,
+          userEmail: session?.user?.email,
+          accessToken: session?.accessToken ? 'presente' : 'ausente'
+        });
         
         // Carregar documento da API com a sessão
         const response = await secureApiService.getDocument(documentId, session);
