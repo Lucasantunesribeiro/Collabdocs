@@ -449,6 +449,11 @@ async function createDocument(env: Env, request: Request): Promise<Response> {
         provider: userProfile.provider
       });
       
+      // VALIDAÇÃO CRÍTICA: Verificar se o userId está sendo definido corretamente
+      if (!userId || userId === 'user-undefined' || userId === 'user-null') {
+        throw new Error(`userId inválido: "${userId}" - userProfile.id: "${userProfile.id}"`);
+      }
+      
     } catch (e) {
       console.error('[CREATE] Erro na autenticação:', e.message);
       return new Response(JSON.stringify({ 
@@ -492,6 +497,16 @@ async function createDocument(env: Env, request: Request): Promise<Response> {
     const visibility = data.visibility || 'public';
     const content = data.content || `# ${title}\\n\\nComece a escrever aqui...`;
     
+    // LOG CRÍTICO: Verificar dados antes do INSERT
+    console.log('[CREATE] 🔍 DADOS FINAIS PARA INSERT:', {
+      documentId,
+      userId,
+      title,
+      visibility,
+      now,
+      content: content.substring(0, 100) + '...'
+    });
+    
     console.log('[CREATE] Tentando INSERT com estratégia de fallback...');
     
     let result;
@@ -527,6 +542,22 @@ async function createDocument(env: Env, request: Request): Promise<Response> {
       
       console.log('[CREATE] ✅ Estratégia 1 SUCESSO - INSERT com content');
       
+      // VERIFICAÇÃO CRÍTICA: Confirmar o que foi salvo no banco
+      console.log('[CREATE] 🔍 VERIFICANDO DOCUMENTO SALVO NO BANCO...');
+      try {
+        const verifyStmt = env.DB.prepare('SELECT * FROM documents WHERE id = ?');
+        const savedDoc = await verifyStmt.bind(documentId).first();
+        console.log('[CREATE] 📋 DOCUMENTO SALVO NO BANCO:', savedDoc);
+        
+        if (savedDoc.owner_id !== userId) {
+          console.error('[CREATE] 🚨 ALERTA: owner_id diferente do esperado!');
+          console.error('[CREATE] Esperado:', userId);
+          console.error('[CREATE] Encontrado:', savedDoc.owner_id);
+        }
+      } catch (verifyError) {
+        console.log('[CREATE] ⚠️ Erro ao verificar documento salvo:', verifyError.message);
+      }
+      
     } catch (contentError) {
       console.log('[CREATE] ❌ Estratégia 1 FALHOU:', contentError.message);
       console.log('[CREATE] Estratégia 2: INSERT sem content...');
@@ -557,6 +588,22 @@ async function createDocument(env: Env, request: Request): Promise<Response> {
        };
       
       console.log('[CREATE] ✅ Estratégia 2 SUCESSO - INSERT sem content');
+      
+      // VERIFICAÇÃO CRÍTICA: Confirmar o que foi salvo no banco
+      console.log('[CREATE] 🔍 VERIFICANDO DOCUMENTO SALVO NO BANCO (Estratégia 2)...');
+      try {
+        const verifyStmt = env.DB.prepare('SELECT * FROM documents WHERE id = ?');
+        const savedDoc = await verifyStmt.bind(documentId).first();
+        console.log('[CREATE] 📋 DOCUMENTO SALVO NO BANCO:', savedDoc);
+        
+        if (savedDoc.owner_id !== userId) {
+          console.error('[CREATE] 🚨 ALERTA: owner_id diferente do esperado!');
+          console.error('[CREATE] Esperado:', userId);
+          console.error('[CREATE] Encontrado:', savedDoc.owner_id);
+        }
+      } catch (verifyError) {
+        console.log('[CREATE] ⚠️ Erro ao verificar documento salvo:', verifyError.message);
+      }
     }
     
     if (!result.success) {
