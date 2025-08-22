@@ -189,7 +189,7 @@ export default {
           return await getDocuments(env, request);
         }
         
-        if (apiPath.startsWith('/documents/') && apiPath.endsWith('/collaborators') && method === 'GET') {
+        if (apiPath.startsWith('/documents/') && apiPath.endsWith('/collaborators')) {
           console.log(`[API] 🎯 ROTA DE COLABORADORES ATIVADA`);
           console.log(`[API] apiPath: "${apiPath}"`);
           console.log(`[API] method: "${method}"`);
@@ -202,8 +202,23 @@ export default {
             console.log(`[API] Document ID extraído: "${documentId}"`);
             
             if (documentId && documentId.length === 36 && documentId.includes('-')) {
-              console.log(`[API] ✅ UUID válido, chamando getDocumentCollaborators...`);
-              return await getDocumentCollaborators(env, request, documentId);
+              console.log(`[API] ✅ UUID válido, processando colaboradores...`);
+              
+              if (method === 'GET') {
+                return await getDocumentCollaborators(env, request, documentId);
+              } else if (method === 'POST') {
+                return await addDocumentCollaborator(env, request, documentId);
+              } else if (method === 'DELETE') {
+                return await removeDocumentCollaborator(env, request, documentId);
+              } else {
+                return new Response(JSON.stringify({ 
+                  error: 'Método não suportado',
+                  supportedMethods: ['GET', 'POST', 'DELETE']
+                }), { 
+                  status: 405,
+                  headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+                });
+              }
             } else {
               console.error(`[API] ❌ ID do documento inválido: "${documentId}"`);
               return new Response(JSON.stringify({ 
@@ -285,8 +300,8 @@ export default {
           }
         }
 
-        if (apiPath.startsWith('/documents/') && method === 'PUT') {
-          console.log(`[API] 🎯 ROTA DE DOCUMENTO ESPECÍFICO PUT ATIVADA`);
+                if (apiPath.startsWith('/documents/') && (method === 'PUT' || method === 'DELETE')) {
+          console.log(`[API] 🎯 ROTA DE DOCUMENTO ESPECÍFICO ${method} ATIVADA`);
           console.log(`[API] apiPath: "${apiPath}"`);
           console.log(`[API] method: "${method}"`);
           
@@ -300,8 +315,12 @@ export default {
             console.log(`[API] ID válido: ${documentId && documentId.length === 36 && documentId.includes('-')}`);
             
             if (documentId && documentId.length === 36 && documentId.includes('-')) {
-              console.log(`[API] ✅ UUID válido, chamando updateDocument...`);
-              return await updateDocument(env, request, documentId);
+              console.log(`[API] ✅ UUID válido, chamando ${method === 'PUT' ? 'updateDocument' : 'deleteDocument'}...`);
+              if (method === 'PUT') {
+                return await updateDocument(env, request, documentId);
+              } else {
+                return await deleteDocument(env, request, documentId);
+              }
             } else {
               console.error(`[API] ❌ ID do documento inválido: "${documentId}"`);
               return new Response(JSON.stringify({ 
@@ -311,13 +330,13 @@ export default {
                   pathParts: pathParts,
                   expectedFormat: 'UUID v4 (36 caracteres com hífens)'
                 }
-              }), { 
+              }), {
                 status: 400,
                 headers: addCORSHeaders({ 'Content-Type': 'application/json' })
               });
             }
           } else {
-            console.error(`[API] ❌ Estrutura de URL inválida para PUT: ${apiPath}`);
+            console.error(`[API] ❌ Estrutura de URL inválida para ${method}: ${apiPath}`);
             console.error(`[API] Path parts length: ${pathParts.length}, esperado: >= 3`);
             return new Response(JSON.stringify({ 
               error: 'Estrutura de URL inválida',
@@ -326,12 +345,12 @@ export default {
                 pathParts: pathParts,
                 expectedLength: 3
               }
-            }), { 
+            }), {
               status: 400,
               headers: addCORSHeaders({ 'Content-Type': 'application/json' })
             });
           }
-                }
+        }
           
                  if (apiPath === '/debug' && method === 'GET') {
            return await debugTables(env, request);
@@ -1015,13 +1034,13 @@ async function getDocument(env: Env, request: Request, documentId: string): Prom
       documentVisibility: document.visibility
     });
     
-    // Verificar se é colaborador (simplificado por enquanto)
+    // Verificar se é colaborador (incluindo verificação por email)
     let isCollaborator = false;
     try {
       const collaboratorCheck = await env.DB.prepare(`
         SELECT permission FROM document_collaborators 
-        WHERE document_id = ? AND user_id = ?
-      `).bind(documentId, currentUserId).first();
+        WHERE document_id = ? AND (user_id = ? OR user_email = ?)
+      `).bind(documentId, currentUserId, currentUserProfile.email).first();
       
       isCollaborator = !!collaboratorCheck;
       console.log(`[GET_DOC] É colaborador: ${isCollaborator}`);
@@ -1239,13 +1258,13 @@ async function updateDocument(env: Env, request: Request, documentId: string): P
       }
     });
     
-    // Verificar se é colaborador com permissão de escrita
+    // Verificar se é colaborador com permissão de escrita (incluindo verificação por email)
     let canWrite = isOwner;
     try {
       const collaboratorCheck = await env.DB.prepare(`
         SELECT permission FROM document_collaborators 
-        WHERE document_id = ? AND user_id = ? AND permission IN ('write', 'owner')
-      `).bind(documentId, currentUserId).first();
+        WHERE document_id = ? AND (user_id = ? OR user_email = ?) AND permission IN ('write', 'owner')
+      `).bind(documentId, currentUserId, currentUserProfile.email).first();
       
       if (collaboratorCheck) {
         canWrite = true;
@@ -1452,6 +1471,37 @@ async function getDocumentCollaborators(env: Env, request: Request, documentId: 
         details: `ID: ${documentId}`
       }), {
         status: 404,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+    
+    // Verificar permissões: apenas proprietário ou colaboradores podem ver a lista
+    const isOwner = document.owner_id === currentUserId;
+    let isCollaborator = false;
+    
+    try {
+      const collaboratorCheck = await env.DB.prepare(`
+        SELECT permission FROM document_collaborators 
+        WHERE document_id = ? AND (user_id = ? OR user_email = ?)
+      `).bind(documentId, currentUserId, currentUserProfile.email).first();
+      
+      isCollaborator = !!collaboratorCheck;
+    } catch (e) {
+      // Se a tabela não existir, considerar apenas como owner
+      isCollaborator = false;
+    }
+    
+    if (!isOwner && !isCollaborator && document.visibility !== 'public') {
+      return new Response(JSON.stringify({ 
+        error: 'Você não tem permissão para ver os colaboradores deste documento',
+        details: {
+          reason: 'Documento privado e você não é o proprietário nem colaborador',
+          documentId: documentId,
+          documentVisibility: document.visibility,
+          currentUser: currentUserId
+        }
+      }), {
+        status: 403,
         headers: addCORSHeaders({ 'Content-Type': 'application/json' })
       });
     }
@@ -2068,6 +2118,438 @@ Este é um documento de teste criado após a limpeza do banco de dados.
     console.error('[CLEAN_DB_PUBLIC] 💥 ERRO FINAL:', error);
     return new Response(JSON.stringify({ 
       error: 'Erro ao limpar banco de dados',
+      message: error instanceof Error ? error.message : 'Erro desconhecido'
+    }), {
+      status: 500,
+      headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+    });
+  }
+}
+
+// Função para adicionar colaborador a um documento
+async function addDocumentCollaborator(env: Env, request: Request, documentId: string): Promise<Response> {
+  try {
+    console.log(`[ADD_COLLAB] Adicionando colaborador ao documento: "${documentId}"`);
+    
+    // Verificar autenticação
+    const authorization = request.headers.get('Authorization');
+    if (!authorization?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Token de autenticação necessário' }), {
+        status: 401,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+    
+    // Extrair perfil do usuário
+    let currentUserId: string | null = null;
+    let currentUserProfile: any = null;
+    
+    try {
+      const profileHeader = request.headers.get('X-User-Profile');
+      if (!profileHeader) {
+        throw new Error('Perfil do usuário não fornecido');
+      }
+      
+      currentUserProfile = JSON.parse(profileHeader);
+      currentUserId = `user-${currentUserProfile.id}`;
+      
+      console.log('[ADD_COLLAB] ✅ Usuário autenticado:', {
+        id: currentUserId,
+        name: currentUserProfile.name,
+        email: currentUserProfile.email
+      });
+      
+    } catch (e) {
+      console.error('[ADD_COLLAB] Erro na autenticação:', e.message);
+      return new Response(JSON.stringify({ 
+        error: 'Falha na autenticação do usuário',
+        details: e.message 
+      }), {
+        status: 401,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+    
+    // Verificar se o documento existe e se o usuário tem permissão para adicionar colaboradores
+    const document = await env.DB.prepare(`
+      SELECT id, owner_id, visibility FROM documents WHERE id = ?
+    `).bind(documentId).first();
+    
+    if (!document) {
+      return new Response(JSON.stringify({ error: 'Documento não encontrado' }), {
+        status: 404,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+    
+    // Apenas o proprietário pode adicionar colaboradores
+    if (document.owner_id !== currentUserId) {
+      return new Response(JSON.stringify({ 
+        error: 'Apenas o proprietário do documento pode adicionar colaboradores' 
+      }), {
+        status: 403,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+    
+    // Extrair dados da requisição
+    let requestData: any = {};
+    try {
+      requestData = await request.json();
+      console.log('[ADD_COLLAB] Dados recebidos:', requestData);
+    } catch (e) {
+      return new Response(JSON.stringify({ 
+        error: 'Dados inválidos',
+        details: 'JSON malformado' 
+      }), {
+        status: 400,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+    
+    const { email, permission = 'read' } = requestData;
+    
+    if (!email) {
+      return new Response(JSON.stringify({ 
+        error: 'Email do colaborador é obrigatório' 
+      }), {
+        status: 400,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+    
+    if (!['read', 'write'].includes(permission)) {
+      return new Response(JSON.stringify({ 
+        error: 'Permissão inválida. Use "read" ou "write"' 
+      }), {
+        status: 400,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+    
+    // Verificar se o usuário já é colaborador
+    const existingCollab = await env.DB.prepare(`
+      SELECT id FROM document_collaborators 
+      WHERE document_id = ? AND user_email = ?
+    `).bind(documentId, email).first();
+    
+    if (existingCollab) {
+      // Atualizar permissão existente
+      await env.DB.prepare(`
+        UPDATE document_collaborators 
+        SET permission = ?, updated_at = datetime('now')
+        WHERE document_id = ? AND user_email = ?
+      `).bind(permission, documentId, email).run();
+      
+      console.log('[ADD_COLLAB] ✅ Permissão do colaborador atualizada');
+    } else {
+      // Adicionar novo colaborador
+      const collabId = crypto.randomUUID();
+      await env.DB.prepare(`
+        INSERT INTO document_collaborators (
+          id, document_id, user_email, permission, added_by, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      `).bind(collabId, documentId, email, permission, currentUserId).run();
+      
+      console.log('[ADD_COLLAB] ✅ Novo colaborador adicionado');
+    }
+    
+    return new Response(JSON.stringify({ 
+      message: 'Colaborador adicionado com sucesso',
+      documentId,
+      email,
+      permission
+    }), {
+      status: 200,
+      headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+    });
+    
+  } catch (error) {
+    console.error('[ADD_COLLAB] 💥 ERRO:', error);
+    return new Response(JSON.stringify({ 
+      error: 'Erro ao adicionar colaborador',
+      message: error instanceof Error ? error.message : 'Erro desconhecido'
+    }), {
+      status: 500,
+      headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+    });
+  }
+}
+
+// Função para remover colaborador de um documento
+async function removeDocumentCollaborator(env: Env, request: Request, documentId: string): Promise<Response> {
+  try {
+    console.log(`[REMOVE_COLLAB] Removendo colaborador do documento: "${documentId}"`);
+    
+    // Verificar autenticação
+    const authorization = request.headers.get('Authorization');
+    if (!authorization?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Token de autenticação necessário' }), {
+        status: 401,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+    
+    // Extrair perfil do usuário
+    let currentUserId: string | null = null;
+    let currentUserProfile: any = null;
+    
+    try {
+      const profileHeader = request.headers.get('X-User-Profile');
+      if (!profileHeader) {
+        throw new Error('Perfil do usuário não fornecido');
+      }
+      
+      currentUserProfile = JSON.parse(profileHeader);
+      currentUserId = `user-${currentUserProfile.id}`;
+      
+      console.log('[REMOVE_COLLAB] ✅ Usuário autenticado:', {
+        id: currentUserId,
+        name: currentUserProfile.name,
+        email: currentUserProfile.email
+      });
+      
+    } catch (e) {
+      console.error('[REMOVE_COLLAB] Erro na autenticação:', e.message);
+      return new Response(JSON.stringify({ 
+        error: 'Falha na autenticação do usuário',
+        details: e.message 
+      }), {
+        status: 401,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+    
+    // Verificar se o documento existe e se o usuário tem permissão para remover colaboradores
+    const document = await env.DB.prepare(`
+      SELECT id, owner_id, visibility FROM documents WHERE id = ?
+    `).bind(documentId).first();
+    
+    if (!document) {
+      return new Response(JSON.stringify({ error: 'Documento não encontrado' }), {
+        status: 404,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+    
+    // Apenas o proprietário pode remover colaboradores
+    if (document.owner_id !== currentUserId) {
+      return new Response(JSON.stringify({ 
+        error: 'Apenas o proprietário do documento pode remover colaboradores' 
+      }), {
+        status: 403,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+    
+    // Extrair dados da requisição
+    let requestData: any = {};
+    try {
+      requestData = await request.json();
+      console.log('[REMOVE_COLLAB] Dados recebidos:', requestData);
+    } catch (e) {
+      return new Response(JSON.stringify({ 
+        error: 'Dados inválidos',
+        details: 'JSON malformado' 
+      }), {
+        status: 400,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+    
+    const { email } = requestData;
+    
+    if (!email) {
+      return new Response(JSON.stringify({ 
+        error: 'Email do colaborador é obrigatório' 
+      }), {
+        status: 400,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+    
+    // Remover colaborador
+    const result = await env.DB.prepare(`
+      DELETE FROM document_collaborators 
+      WHERE document_id = ? AND user_email = ?
+    `).bind(documentId, email).run();
+    
+    if (result.changes === 0) {
+      return new Response(JSON.stringify({ 
+        error: 'Colaborador não encontrado' 
+      }), {
+        status: 404,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+    
+    console.log('[REMOVE_COLLAB] ✅ Colaborador removido com sucesso');
+    
+    return new Response(JSON.stringify({ 
+      message: 'Colaborador removido com sucesso',
+      documentId,
+      email,
+      changes: result.changes
+    }), {
+      status: 200,
+      headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+    });
+    
+  } catch (error) {
+    console.error('[REMOVE_COLLAB] 💥 ERRO:', error);
+    return new Response(JSON.stringify({ 
+      error: 'Erro ao remover colaborador',
+      message: error instanceof Error ? error.message : 'Erro desconhecido'
+    }), {
+      status: 500,
+      headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+    });
+  }
+}
+
+// Função para deletar um documento
+async function deleteDocument(env: Env, request: Request, documentId: string): Promise<Response> {
+  try {
+    console.log(`[DELETE_DOC] 🗑️ Iniciando deleção do documento: ${documentId}`);
+    
+    // Verificar autenticação
+    const authHeader = request.headers.get('Authorization');
+    const userProfileHeader = request.headers.get('X-User-Profile');
+    
+    if (!authHeader || !userProfileHeader) {
+      console.error('[DELETE_DOC] ❌ Headers de autenticação ausentes');
+      return new Response(JSON.stringify({ 
+        error: 'Autenticação necessária',
+        details: 'Authorization e X-User-Profile headers são obrigatórios'
+      }), {
+        status: 401,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+    
+    // Extrair informações do usuário
+    let currentUserProfile: JWTPayload;
+    let currentUserId: string;
+    
+    try {
+      currentUserProfile = JSON.parse(userProfileHeader);
+      currentUserId = currentUserProfile.sub;
+      console.log(`[DELETE_DOC] Usuário autenticado: ${currentUserProfile.name} (${currentUserProfile.email})`);
+      console.log(`[DELETE_DOC] User ID: ${currentUserId}`);
+    } catch (e) {
+      console.error('[DELETE_DOC] Erro na autenticação:', e.message);
+      return new Response(JSON.stringify({ 
+        error: 'Falha na autenticação do usuário',
+        details: e.message 
+      }), {
+        status: 401,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+    
+    // Verificar se o documento existe e se o usuário tem permissão para deletar
+    const document = await env.DB.prepare(`
+      SELECT id, owner_id, title, visibility FROM documents WHERE id = ?
+    `).bind(documentId).first();
+    
+    if (!document) {
+      console.error(`[DELETE_DOC] Documento não encontrado para ID: "${documentId}"`);
+      return new Response(JSON.stringify({ 
+        error: 'Documento não encontrado',
+        details: `ID: ${documentId}`
+      }), {
+        status: 404,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+    
+    // 🔒 PERMISSÃO CRÍTICA: Apenas o proprietário pode deletar documentos
+    const isOwner = document.owner_id === currentUserId;
+    console.log(`[DELETE_DOC] 🔍 VERIFICAÇÃO CRÍTICA DE PERMISSÕES:`, {
+      documentOwner: document.owner_id,
+      currentUser: currentUserId,
+      isOwner: isOwner,
+      documentTitle: document.title,
+      documentVisibility: document.visibility,
+      comparison: {
+        documentOwnerType: typeof document.owner_id,
+        currentUserType: typeof currentUserId,
+        documentOwnerValue: `"${document.owner_id}"`,
+        currentUserValue: `"${currentUserId}"`,
+        exactMatch: document.owner_id === currentUserId,
+        lengthMatch: document.owner_id?.length === currentUserId?.length
+      }
+    });
+    
+    if (!isOwner) {
+      console.error(`[DELETE_DOC] ❌ ACESSO NEGADO - Apenas o proprietário pode deletar documentos`);
+      console.error(`[DELETE_DOC] Detalhes:`, {
+        isOwner,
+        visibility: document.visibility,
+        currentUser: currentUserId,
+        documentOwner: document.owner_id,
+        documentTitle: document.title
+      });
+      
+      return new Response(JSON.stringify({ 
+        error: 'Apenas o proprietário do documento pode deletá-lo',
+        details: {
+          reason: 'Permissão de deleção restrita ao proprietário',
+          documentId: documentId,
+          documentTitle: document.title,
+          currentUser: currentUserId,
+          documentOwner: document.owner_id
+        }
+      }), {
+        status: 403,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+    
+    console.log(`[DELETE_DOC] ✅ Permissão de deleção concedida - deletando documento`);
+    
+    // Deletar colaboradores primeiro (se a tabela existir)
+    try {
+      const deleteCollaboratorsResult = await env.DB.prepare(`
+        DELETE FROM document_collaborators WHERE document_id = ?
+      `).bind(documentId).run();
+      console.log(`[DELETE_DOC] Colaboradores removidos: ${deleteCollaboratorsResult.changes}`);
+    } catch (e) {
+      console.log(`[DELETE_DOC] Tabela de colaboradores não existe ou erro ao remover:`, e.message);
+    }
+    
+    // Deletar o documento
+    const deleteResult = await env.DB.prepare(`
+      DELETE FROM documents WHERE id = ?
+    `).bind(documentId).run();
+    
+    if (deleteResult.changes === 0) {
+      console.error(`[DELETE_DOC] ❌ Nenhum documento foi deletado`);
+      return new Response(JSON.stringify({ 
+        error: 'Falha ao deletar documento',
+        details: 'Nenhuma alteração foi feita no banco'
+      }), {
+        status: 500,
+        headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+      });
+    }
+    
+    console.log(`[DELETE_DOC] ✅ Documento deletado com sucesso`);
+    
+    return new Response(JSON.stringify({ 
+      message: 'Documento deletado com sucesso',
+      documentId,
+      documentTitle: document.title,
+      changes: deleteResult.changes
+    }), {
+      status: 200,
+      headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+    });
+    
+  } catch (error) {
+    console.error('[DELETE_DOC] 💥 ERRO:', error);
+    return new Response(JSON.stringify({ 
+      error: 'Erro ao deletar documento',
       message: error instanceof Error ? error.message : 'Erro desconhecido'
     }), {
       status: 500,

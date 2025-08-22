@@ -187,6 +187,15 @@ class SecureApiService {
   async getDocumentCollaborators(documentId: string, session: NextAuthSession): Promise<{ collaborators: any[]; total: number }> {
     return this.authenticatedRequest<{ collaborators: any[]; total: number }>(`/documents/${documentId}/collaborators`, session)
   }
+
+  /**
+   * Deletar um documento (apenas proprietário)
+   */
+  async deleteDocument(id: string, session: NextAuthSession): Promise<{ message: string }> {
+    return this.authenticatedRequest<{ message: string }>(`/documents/${id}`, session, {
+      method: 'DELETE',
+    })
+  }
 }
 
 export const secureApiService = new SecureApiService()

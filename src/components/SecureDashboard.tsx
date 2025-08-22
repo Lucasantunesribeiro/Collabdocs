@@ -95,11 +95,23 @@ export default function SecureDashboard() {
         throw new Error('Sessão não disponível');
       }
       
-      // TODO: Implementar delete na API
+      // Confirmar deleção
+      if (!confirm('Tem certeza que deseja deletar este documento? Esta ação não pode ser desfeita.')) {
+        return;
+      }
+      
       console.log('[Dashboard] Deletando documento:', documentId)
+      
+      // Chamar API para deletar
+      await secureApiService.deleteDocument(documentId, session)
+      
+      console.log('[Dashboard] ✅ Documento deletado com sucesso')
       
       // Recarregar lista
       await loadDocuments()
+      
+      // Limpar erro se existir
+      setError(null)
     } catch (error) {
       console.error('[Dashboard] Erro ao deletar documento:', error)
       setError(error instanceof Error ? error.message : 'Erro ao deletar documento')
