@@ -254,15 +254,21 @@ export default function SecureDashboard() {
                         </div>
 
                         <div className="flex items-center space-x-2">
-                          {session?.user?.image && (
+                          {document.owner_avatar_url ? (
                             <img 
-                              src={session.user.image} 
+                              src={document.owner_avatar_url} 
                               alt="Proprietário"
                               className="w-6 h-6 rounded-full"
                             />
+                          ) : (
+                            <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center">
+                              <span className="text-xs font-medium text-gray-600">
+                                {document.owner_name?.charAt(0)?.toUpperCase() || '?'}
+                              </span>
+                            </div>
                           )}
                           <span className="text-sm text-gray-600">
-                            Proprietário: <strong>{session?.user?.name}</strong>
+                            Proprietário: <strong>{document.owner_name || 'Desconhecido'}</strong>
                           </span>
                         </div>
                       </div>
@@ -275,24 +281,24 @@ export default function SecureDashboard() {
                           Abrir
                         </Button>
                         
+                        {/* Botão Editar - sempre visível */}
+                        <Button 
+                          onClick={() => window.location.href = `/document/${document.id}?edit=true`}
+                          size="sm"
+                          variant="secondary"
+                        >
+                          Editar
+                        </Button>
+                        
+                        {/* Botão Deletar - apenas para o proprietário */}
                         {document.is_owner && (
-                          <>
-                            <Button 
-                              onClick={() => window.location.href = `/document/${document.id}?edit=true`}
-                              size="sm"
-                              variant="secondary"
-                            >
-                              Editar
-                            </Button>
-                            
-                            <Button 
-                              onClick={() => handleDeleteDocument(document.id)}
-                              size="sm"
-                              variant="destructive"
-                            >
-                              Deletar
-                            </Button>
-                          </>
+                          <Button 
+                            onClick={() => handleDeleteDocument(document.id)}
+                            size="sm"
+                            variant="destructive"
+                          >
+                            Deletar
+                          </Button>
                         )}
                       </div>
                     </div>

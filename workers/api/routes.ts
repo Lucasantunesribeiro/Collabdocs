@@ -805,6 +805,15 @@ async function getDocuments(env: Env, request: Request): Promise<Response> {
       const isOwner = doc.owner_id === currentUserId;
       const userData = usersData[doc.owner_id];
       
+      // LOG CRÍTICO: Verificar dados do documento
+      console.log('[GET] 🔍 ENRIQUECENDO DOCUMENTO:', {
+        docId: doc.id,
+        docOwnerId: doc.owner_id,
+        currentUserId: currentUserId,
+        isOwner: isOwner,
+        userData: userData
+      });
+      
       // Usar dados reais do usuário se disponível, senão fallback
       let ownerName = `Usuário ${ownerHash.slice(0, 8)}`;
       let avatarSeed = ownerHash;
@@ -813,9 +822,13 @@ async function getDocuments(env: Env, request: Request): Promise<Response> {
       if (userData?.name) {
         ownerName = userData.name;
         avatarSeed = userData.name;
+        console.log('[GET] ✅ Usando nome real do usuário:', ownerName);
       } else if (isOwner && currentUserProfile?.name) {
         ownerName = currentUserProfile.name;
         avatarSeed = currentUserProfile.name;
+        console.log('[GET] ✅ Usando nome da sessão atual:', ownerName);
+      } else {
+        console.log('[GET] ⚠️ Usando nome fallback:', ownerName);
       }
       
       // Se não temos avatar_url do banco, gerar um
@@ -823,12 +836,22 @@ async function getDocuments(env: Env, request: Request): Promise<Response> {
         avatarUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(avatarSeed)}`;
       }
       
-      return {
+      const enrichedDoc = {
         ...doc,
         owner_name: ownerName,
         owner_avatar_url: avatarUrl,
         is_owner: isOwner
       };
+      
+      console.log('[GET] 📋 DOCUMENTO ENRIQUECIDO:', {
+        id: enrichedDoc.id,
+        title: enrichedDoc.title,
+        owner_id: enrichedDoc.owner_id,
+        owner_name: enrichedDoc.owner_name,
+        is_owner: enrichedDoc.is_owner
+      });
+      
+      return enrichedDoc;
     });
     
     return new Response(JSON.stringify({ 
@@ -1189,11 +1212,19 @@ async function updateDocument(env: Env, request: Request, documentId: string): P
 
     // Verificar permissões
     const isOwner = document.owner_id === currentUserId;
-    console.log(`[UPDATE_DOC] Verificando permissões:`, {
+    console.log(`[UPDATE_DOC] 🔍 VERIFICAÇÃO CRÍTICA DE PERMISSÕES:`, {
       documentOwner: document.owner_id,
       currentUser: currentUserId,
       isOwner: isOwner,
-      documentVisibility: document.visibility
+      documentVisibility: document.visibility,
+      comparison: {
+        documentOwnerType: typeof document.owner_id,
+        currentUserType: typeof currentUserId,
+        documentOwnerValue: `"${document.owner_id}"`,
+        currentUserValue: `"${currentUserId}"`,
+        exactMatch: document.owner_id === currentUserId,
+        lengthMatch: document.owner_id?.length === currentUserId?.length
+      }
     });
     
     // Verificar se é colaborador com permissão de escrita
