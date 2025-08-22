@@ -45,12 +45,12 @@ export const authOptions: NextAuthOptions = {
         })
         
         token.provider = account.provider as 'github' | 'google'
-        token.accessToken = account.access_token || account.accessToken || ''
+        token.accessToken = (account.access_token || account.accessToken || '') as string
         
         // Garantir que temos os dados essenciais
-        token.name = user.name || profile?.name || ''
-        token.email = user.email || profile?.email || ''
-        token.picture = user.image || profile?.image || ''
+        token.name = (user.name || profile?.name || '') as string
+        token.email = (user.email || profile?.email || '') as string
+        token.picture = (user.image || profile?.image || '') as string
       }
       
       return token
@@ -59,12 +59,12 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       // Transferir dados do token para a sessão
       if (token && session.user) {
-        session.user.id = token.sub as string
-        session.user.name = token.name as string
-        session.user.email = token.email as string
-        session.user.image = token.picture as string
-        session.user.provider = token.provider as 'github' | 'google'
-        session.accessToken = token.accessToken as string
+        session.user.id = (token.sub || '') as string
+        session.user.name = (token.name || '') as string
+        session.user.email = (token.email || '') as string
+        session.user.image = (token.picture || '') as string
+        session.user.provider = (token.provider || 'google') as 'github' | 'google'
+        session.accessToken = (token.accessToken || '') as string
         
         console.log('[NextAuth] Session Callback - User authenticated:', {
           id: session.user.id,
