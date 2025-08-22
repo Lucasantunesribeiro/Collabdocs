@@ -21,6 +21,7 @@ export interface Document {
   // Campos adicionais para informações do proprietário
   owner_name?: string;
   owner_avatar_url?: string;
+  is_owner?: boolean; // Indica se o usuário atual é o proprietário
 }
 
 export interface Permission {
