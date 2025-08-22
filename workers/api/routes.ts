@@ -342,6 +342,12 @@ export default {
            console.log(`[API] 🧹 ROTA DE LIMPEZA DO BANCO ATIVADA`);
            return await cleanDatabase(env, request);
          }
+         
+         // ROTA DE LIMPEZA SEM AUTENTICAÇÃO (APENAS PARA DESENVOLVIMENTO)
+         if (apiPath === '/debug/clean-database-public' && method === 'POST') {
+           console.log(`[API] 🧹 ROTA DE LIMPEZA PÚBLICA ATIVADA (SEM AUTENTICAÇÃO)`);
+           return await cleanDatabasePublic(env, request);
+         }
 
         // Health check endpoint
         if (apiPath === '/health' && method === 'GET') {
@@ -1901,6 +1907,165 @@ Este é um documento de teste criado após a limpeza do banco de dados.
     
   } catch (error) {
     console.error('[CLEAN_DB] 💥 ERRO FINAL:', error);
+         return new Response(JSON.stringify({ 
+       error: 'Erro ao limpar banco de dados',
+       message: error instanceof Error ? error.message : 'Erro desconhecido'
+     }), {
+       status: 500,
+       headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+     });
+   }
+}
+
+async function cleanDatabasePublic(env: Env, request: Request): Promise<Response> {
+  try {
+    console.log('[CLEAN_DB_PUBLIC] 🧹 Iniciando limpeza pública do banco de dados...');
+    
+    // 1. LIMPAR TODOS OS DOCUMENTOS EXISTENTES
+    console.log('[CLEAN_DB_PUBLIC] 🗑️ Deletando todos os documentos...');
+    const deleteDocsStmt = env.DB.prepare('DELETE FROM documents');
+    const deleteDocsResult = await deleteDocsStmt.run();
+    console.log('[CLEAN_DB_PUBLIC] ✅ Documentos deletados:', deleteDocsResult.changes);
+    
+    // 2. LIMPAR TODOS OS USUÁRIOS EXISTENTES
+    console.log('[CLEAN_DB_PUBLIC] 🗑️ Deletando todos os usuários...');
+    const deleteUsersStmt = env.DB.prepare('DELETE FROM users');
+    const deleteUsersResult = await deleteUsersStmt.run();
+    console.log('[CLEAN_DB_PUBLIC] ✅ Usuários deletados:', deleteUsersResult.changes);
+    
+    // 3. LIMPAR TABELA DE COLABORADORES (se existir)
+    try {
+      console.log('[CLEAN_DB_PUBLIC] 🗑️ Deletando colaboradores...');
+      const deleteCollabStmt = env.DB.prepare('DELETE FROM document_collaborators');
+      const deleteCollabResult = await deleteCollabStmt.run();
+      console.log('[CLEAN_DB_PUBLIC] ✅ Colaboradores deletados:', deleteCollabResult.changes);
+    } catch (e) {
+      console.log('[CLEAN_DB_PUBLIC] ⚠️ Tabela de colaboradores não existe ou já está vazia');
+    }
+    
+    // 4. CRIAR USUÁRIO DE TESTE (Lucas Antunes)
+    console.log('[CLEAN_DB_PUBLIC] 👤 Criando usuário de teste...');
+    const now = new Date().toISOString();
+    const testUserId = 'user-104161340854264797808'; // ID fixo para Lucas Antunes
+    
+    try {
+      const insertUserStmt = env.DB.prepare(`
+        INSERT INTO users (id, name, email, avatar_url, provider, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+      
+      await insertUserStmt.bind(
+        testUserId,
+        'Lucas Antunes',
+        'lucas.afvr@gmail.com',
+        '',
+        'google',
+        now,
+        now
+      ).run();
+      
+      console.log('[CLEAN_DB_PUBLIC] ✅ Usuário de teste criado');
+    } catch (userError) {
+      console.log('[CLEAN_DB_PUBLIC] ⚠️ Erro ao criar usuário (continuando):', userError.message);
+    }
+    
+    // 5. CRIAR DOCUMENTO DE TESTE
+    console.log('[CLEAN_DB_PUBLIC] 📝 Criando documento de teste...');
+    const documentId = crypto.randomUUID();
+    const testTitle = 'Novo Documento';
+    const testVisibility = 'public';
+    const testContent = `# ${testTitle}
+
+Este é um documento de teste criado após a limpeza do banco de dados.
+
+## Funcionalidades
+- ✅ Criação de documentos
+- ✅ Edição em tempo real
+- ✅ Controle de visibilidade
+- ✅ Sistema de colaboradores
+- ✅ Interface responsiva
+
+## Como usar
+1. Clique em "Editar" para modificar o conteúdo
+2. As alterações são salvas automaticamente
+3. Compartilhe o link com colaboradores
+4. Gerencie permissões de acesso
+
+---
+*Documento criado em ${new Date().toLocaleDateString('pt-BR')}*
+`;
+    
+    try {
+      const insertDocStmt = env.DB.prepare(`
+        INSERT INTO documents (id, owner_id, title, visibility, created_at, updated_at, content)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+      
+      await insertDocStmt.bind(
+        documentId,
+        testUserId,
+        testTitle,
+        testVisibility,
+        now,
+        now,
+        testContent
+      ).run();
+      
+      console.log('[CLEAN_DB_PUBLIC] ✅ Documento de teste criado:', documentId);
+    } catch (docError) {
+      console.log('[CLEAN_DB_PUBLIC] ⚠️ Erro ao criar documento (continuando):', docError.message);
+      
+      // Fallback: tentar sem content
+      try {
+        const insertDocFallbackStmt = env.DB.prepare(`
+          INSERT INTO documents (id, owner_id, title, visibility, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `);
+        
+        await insertDocFallbackStmt.bind(
+          documentId,
+          testUserId,
+          testTitle,
+          testVisibility,
+          now,
+          now
+        ).run();
+        
+        console.log('[CLEAN_DB_PUBLIC] ✅ Documento de teste criado (fallback):', documentId);
+      } catch (fallbackError) {
+        console.error('[CLEAN_DB_PUBLIC] ❌ Erro no fallback:', fallbackError.message);
+      }
+    }
+    
+    // 6. VERIFICAR RESULTADO FINAL
+    console.log('[CLEAN_DB_PUBLIC] 🔍 Verificando resultado final...');
+    
+    const finalDocsCount = await env.DB.prepare('SELECT COUNT(*) as count FROM documents').first();
+    const finalUsersCount = await env.DB.prepare('SELECT COUNT(*) as count FROM users').first();
+    
+    console.log('[CLEAN_DB_PUBLIC] 📊 RESULTADO FINAL:', {
+      documentos: finalDocsCount?.count || 0,
+      usuarios: finalUsersCount?.count || 0
+    });
+    
+    return new Response(JSON.stringify({ 
+      message: 'Banco de dados limpo com sucesso (rota pública)',
+      result: {
+        documentos_deletados: deleteDocsResult.changes || 0,
+        usuarios_deletados: deleteUsersResult.changes || 0,
+        documento_teste_criado: documentId,
+        resultado_final: {
+          documentos: finalDocsCount?.count || 0,
+          usuarios: finalUsersCount?.count || 0
+        }
+      }
+    }), {
+      status: 200,
+      headers: addCORSHeaders({ 'Content-Type': 'application/json' })
+    });
+    
+  } catch (error) {
+    console.error('[CLEAN_DB_PUBLIC] 💥 ERRO FINAL:', error);
     return new Response(JSON.stringify({ 
       error: 'Erro ao limpar banco de dados',
       message: error instanceof Error ? error.message : 'Erro desconhecido'
