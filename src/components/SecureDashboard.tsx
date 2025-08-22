@@ -57,6 +57,17 @@ export default function SecureDashboard() {
         throw new Error('Sessão não disponível');
       }
       
+      // LOG CRÍTICO: Verificar dados da sessão antes de criar
+      console.log('[Dashboard] 🔍 DADOS DA SESSÃO:', {
+        user: {
+          id: session.user?.id,
+          name: session.user?.name,
+          email: session.user?.email,
+          provider: session.user?.provider
+        },
+        accessToken: session.accessToken ? 'presente' : 'ausente'
+      });
+      
       const newDoc = await secureApiService.createDocument({
         title: title,
         content: `# ${title}\n\nComece a escrever aqui...`,
