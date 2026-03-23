@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { secureApiService } from '@/lib/secure-api';
 import { Button } from './ui/Button';
 import { Card, CardContent } from './ui/Card';
@@ -29,6 +29,48 @@ interface CollaborativeEditorProps {
   session: any; // Sessão NextAuth
 }
 
+function useCollaboration(documentId: string, userId: string, userName: string) {
+  const [connectedUsers, setConnectedUsers] = useState<{ userId: string; userName: string }[]>([]);
+  const wsRef = useRef<WebSocket | null>(null);
+
+  useEffect(() => {
+    if (!documentId || documentId === 'demo') return;
+
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'wss://collab-docs.collabdocs.workers.dev';
+    const ws = new WebSocket(
+      `${wsUrl}/api/documents/${documentId}/ws?userId=${userId}&userName=${encodeURIComponent(userName)}`
+    );
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'connected') {
+          setConnectedUsers(msg.users);
+        } else if (msg.type === 'join') {
+          setConnectedUsers(prev => [...prev, { userId: msg.userId, userName: msg.userName }]);
+        } else if (msg.type === 'leave') {
+          setConnectedUsers(prev => prev.filter(u => u.userId !== msg.userId));
+        }
+      } catch {
+        // ignore malformed messages
+      }
+    };
+
+    ws.onerror = () => {}; // silent fail for demo
+    wsRef.current = ws;
+
+    return () => ws.close();
+  }, [documentId, userId, userName]);
+
+  const broadcast = useCallback((content: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'update', userId, userName, documentId, content }));
+    }
+  }, [documentId, userId, userName]);
+
+  return { connectedUsers, broadcast };
+}
+
 export function CollaborativeEditor({ documentId, initialContent, session }: CollaborativeEditorProps) {
   const [content, setContent] = useState(initialContent);
   const [isTyping, setIsTyping] = useState(false);
@@ -38,6 +80,13 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const [collaborators, setCollaborators] = useState<any[]>([]);
   const [isLoadingCollaborators, setIsLoadingCollaborators] = useState(true);
+
+  // Real-time collaboration via WebSocket
+  const { connectedUsers, broadcast } = useCollaboration(
+    documentId,
+    session?.user?.id || 'anonymous',
+    session?.user?.name || 'User'
+  );
 
   // Salvamento automático
   useEffect(() => {
@@ -55,6 +104,9 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
     setContent(newContent);
     setIsTyping(true);
     setIsDirty(true);
+
+    // Broadcast content change to other collaborators in real-time
+    broadcast(newContent);
 
     // Simular indicador de digitação
     setTimeout(() => setIsTyping(false), 1000);
@@ -296,6 +348,11 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
                 <div className="flex items-center gap-2 mb-4">
                   <Users className="w-5 h-5 text-text-600" />
                   <h4 className="font-medium text-text-900">Colaboradores</h4>
+                  {connectedUsers.length > 0 && (
+                    <span className="ml-auto text-xs font-medium text-success-600 bg-success-50 px-2 py-0.5 rounded-full">
+                      {connectedUsers.length + 1} online
+                    </span>
+                  )}
                   {isLoadingCollaborators && (
                     <div className="w-4 h-4 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
                   )}

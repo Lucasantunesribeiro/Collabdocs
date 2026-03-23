@@ -10,6 +10,14 @@ binding = "DB"
 database_name = "COLLAB_DOCS_DB"
 database_id = "e0a23c1f-745b-48cd-8269-08aa103a4434"
 
+[[durable_objects.bindings]]
+name = "COLLAB_SESSIONS"
+class_name = "DocumentSession"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["DocumentSession"]
+
 # Configurações de observabilidade e logs
 [observability]
 enabled = true
