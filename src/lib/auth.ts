@@ -2,6 +2,7 @@ import NextAuth, { NextAuthOptions } from "next-auth"
 import GithubProvider from "next-auth/providers/github"
 import GoogleProvider from "next-auth/providers/google"
 import { DefaultSession } from "next-auth"
+import { encode } from "next-auth/jwt"
 
 // Types are declared in src/types/next-auth.d.ts
 
@@ -65,7 +66,18 @@ export const authOptions: NextAuthOptions = {
         session.user.image = (token.picture || '') as string
         session.user.provider = (token.provider || 'google') as 'github' | 'google'
         session.accessToken = (token.accessToken || '') as string
-        
+
+        // Encode the NextAuth JWT so the client can use it as a Bearer token
+        // for authenticated Worker API calls.
+        try {
+          session.sessionToken = await encode({
+            token,
+            secret: process.env.NEXTAUTH_SECRET as string,
+          })
+        } catch {
+          // Non-fatal — client will receive empty sessionToken
+        }
+
         console.log('[NextAuth] Session Callback - User authenticated:', {
           id: session.user.id,
           name: session.user.name,
@@ -73,7 +85,7 @@ export const authOptions: NextAuthOptions = {
           provider: session.user.provider
         })
       }
-      
+
       return session
     },
     

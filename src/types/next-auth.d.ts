@@ -10,6 +10,8 @@ declare module "next-auth" {
       provider?: 'github' | 'google'
     }
     accessToken?: string
+    /** The raw NextAuth session JWT — used as Bearer token for the Worker API */
+    sessionToken?: string
   }
 
   interface User {
