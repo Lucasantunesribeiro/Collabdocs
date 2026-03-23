@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using CollabDocs.Application.Commands;
 using CollabDocs.Application.DTOs;
 using CollabDocs.Domain.Interfaces;
@@ -13,6 +14,10 @@ public class UpdateDocumentHandler(
 {
     public async Task<DocumentDto> Handle(UpdateDocumentCommand request, CancellationToken cancellationToken)
     {
+        using var activity = Telemetry.Source.StartActivity("UpdateDocument");
+        activity?.SetTag("document.id", request.DocumentId);
+        activity?.SetTag("document.user_id", request.UserId);
+
         var document = await documentRepository.GetByIdAsync(request.DocumentId, cancellationToken)
             ?? throw new KeyNotFoundException($"Document {request.DocumentId} not found");
 
@@ -28,6 +33,9 @@ public class UpdateDocumentHandler(
         await documentRepository.UpdateAsync(document, cancellationToken);
         await auditService.LogAsync(document.Id, request.UserId, "updated",
             new { fields = new[] { request.Content is not null ? "content" : null, request.Title is not null ? "title" : null }.Where(f => f != null) });
+
+        activity?.SetTag("document.version", document.Version);
+        activity?.SetStatus(ActivityStatusCode.Ok);
 
         return new DocumentDto(
             document.Id, document.OwnerId, document.Title, document.Content,

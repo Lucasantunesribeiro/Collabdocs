@@ -1,14 +1,15 @@
-import { getRateLimitCount, incrementRateLimit } from '../infrastructure/db';
+import type { Env } from '../index';
 
 const WINDOW_MS = 60 * 1000; // 1 minute
 const MAX_REQUESTS = 20;
 
 /**
  * Returns true if the request is within the rate limit, false if it should be blocked.
- * Fail-open: if the DB operation fails, allows the request through.
+ * Uses a Durable Object (RateLimiter) for consistent, low-latency counting.
+ * Fail-open: allows request through if the DO is unavailable.
  */
 export async function checkRateLimit(
-  db: D1Database,
+  env: Env,
   request: Request
 ): Promise<boolean> {
   const ip =
@@ -16,19 +17,20 @@ export async function checkRateLimit(
     request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() ??
     'unknown';
 
-  const key = `rl:${ip}`;
-
   try {
-    const count = await getRateLimitCount(db, key);
-    if (count >= MAX_REQUESTS) {
-      return false;
-    }
+    const id = env.RATE_LIMITER.idFromName(ip);
+    const stub = env.RATE_LIMITER.get(id);
 
-    const windowEnd = Date.now() + WINDOW_MS;
-    await incrementRateLimit(db, key, windowEnd);
-    return true;
+    const response = await stub.fetch('https://internal/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ limit: MAX_REQUESTS, windowMs: WINDOW_MS }),
+    });
+
+    const result = await response.json<{ allowed: boolean }>();
+    return result.allowed;
   } catch {
-    // Fail-open: allow request if DB is unavailable
+    // Fail-open: allow request if DO is unavailable
     return true;
   }
 }

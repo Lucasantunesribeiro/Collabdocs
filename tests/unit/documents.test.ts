@@ -13,6 +13,7 @@ vi.mock('../../workers/infrastructure/db', () => ({
   updateDocumentRecord: vi.fn(),
   deleteDocumentRecord: vi.fn(),
   checkCollaboratorAccess: vi.fn(),
+  logAuditEvent: vi.fn().mockResolvedValue(undefined),
 }));
 
 import * as db from '../../workers/infrastructure/db';

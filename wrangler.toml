@@ -14,9 +14,17 @@ database_id = "e0a23c1f-745b-48cd-8269-08aa103a4434"
 name = "COLLAB_SESSIONS"
 class_name = "DocumentSession"
 
+[[durable_objects.bindings]]
+name = "RATE_LIMITER"
+class_name = "RateLimiter"
+
 [[migrations]]
 tag = "v1"
 new_classes = ["DocumentSession"]
+
+[[migrations]]
+tag = "v2"
+new_classes = ["RateLimiter"]
 
 [[queues.producers]]
 binding = "NOTIFICATION_QUEUE"
