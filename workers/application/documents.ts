@@ -9,7 +9,9 @@ import {
   updateDocumentRecord,
   deleteDocumentRecord,
   checkCollaboratorAccess,
+  logAuditEvent,
 } from '../infrastructure/db';
+import { logger } from '../lib/logger';
 
 export interface EnrichedDocument extends Document {
   owner_name: string;
@@ -132,6 +134,10 @@ export async function createDocument(
 
   await createDocumentRecord(db, id, user.id, title, visibility, content);
 
+  logger.info('Document created', { documentId: id, userId: user.id, title, visibility });
+
+  await logAuditEvent(db, id, user.id, 'created');
+
   const now = new Date().toISOString();
   return { id, owner_id: user.id, title, visibility: visibility as 'private' | 'public', content, created_at: now, updated_at: now };
 }
@@ -140,7 +146,7 @@ export async function updateDocument(
   db: D1Database,
   user: AuthenticatedUser,
   documentId: string,
-  data: { content?: string; title?: string }
+  data: { content?: string; title?: string; expectedVersion?: number }
 ): Promise<DocumentWithPermission> {
   const doc = await findDocumentById(db, documentId);
 
@@ -174,12 +180,20 @@ export async function updateDocument(
     throw err;
   }
 
-  await updateDocumentRecord(db, documentId, data);
+  const { expectedVersion, ...fields } = data;
+  await updateDocumentRecord(db, documentId, fields, expectedVersion);
 
   const updated = await findDocumentById(db, documentId);
   if (!updated) {
     throw new Error('Document disappeared after update');
   }
+
+  const updatedFields = Object.keys(fields).filter(
+    (k) => fields[k as keyof typeof fields] !== undefined
+  );
+  logger.info('Document updated', { documentId, userId: user.id, fields: updatedFields });
+
+  await logAuditEvent(db, documentId, user.id, 'updated', { fields: updatedFields });
 
   const userData = await findUserById(db, updated.owner_id);
   const usersMap: Map<string, any> = new Map();
@@ -211,6 +225,10 @@ export async function deleteDocument(
   }
 
   await deleteDocumentRecord(db, documentId);
+
+  logger.info('Document deleted', { documentId, userId: user.id, title: doc.title });
+
+  await logAuditEvent(db, documentId, user.id, 'deleted');
 
   return { documentId, title: doc.title };
 }

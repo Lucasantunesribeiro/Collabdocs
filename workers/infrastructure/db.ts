@@ -1,4 +1,5 @@
 import type { Document } from '../domain/types';
+import { logger } from '../lib/logger';
 
 // D1Database is available as a global in the Cloudflare Workers runtime
 declare const D1Database: any;
@@ -63,7 +64,7 @@ export async function findDocumentsByUser(
       )
       .bind(userId, userId, email)
       .all();
-    return (result.results ?? []) as Document[];
+    return (result.results ?? []) as unknown as Document[];
   } catch {
     // Fallback: collaborators table may not exist yet
     const result = await db
@@ -90,13 +91,14 @@ export async function findDocumentById(
     )
     .bind(id)
     .first();
-  return (row as Document) ?? null;
+  return (row as unknown as Document) ?? null;
 }
 
 export async function updateDocumentRecord(
   db: D1Database,
   id: string,
-  fields: Partial<{ content: string; title: string }>
+  fields: Partial<{ content: string; title: string }>,
+  expectedVersion?: number
 ): Promise<void> {
   const setClauses: string[] = [];
   const values: any[] = [];
@@ -114,17 +116,40 @@ export async function updateDocumentRecord(
     throw new Error('No fields to update');
   }
 
+  // Always increment version on every update
+  setClauses.push('version = version + 1');
   setClauses.push('updated_at = ?');
   values.push(new Date().toISOString());
-  values.push(id);
 
-  const result = await db
-    .prepare(`UPDATE documents SET ${setClauses.join(', ')} WHERE id = ?`)
-    .bind(...values)
-    .run();
+  // Build WHERE clause — optionally lock on expected version
+  if (expectedVersion !== undefined) {
+    values.push(id);
+    values.push(expectedVersion);
+    const result = await db
+      .prepare(`UPDATE documents SET ${setClauses.join(', ')} WHERE id = ? AND version = ?`)
+      .bind(...values)
+      .run();
 
-  if (!result.success) {
-    throw new Error('Failed to update document record');
+    if (!result.success) {
+      throw new Error('Failed to update document record');
+    }
+
+    // D1 returns changes === 0 when the version predicate did not match
+    if (result.changes === 0) {
+      const conflictErr = new Error('Document was modified by another user');
+      (conflictErr as any).status = 409;
+      throw conflictErr;
+    }
+  } else {
+    values.push(id);
+    const result = await db
+      .prepare(`UPDATE documents SET ${setClauses.join(', ')} WHERE id = ?`)
+      .bind(...values)
+      .run();
+
+    if (!result.success) {
+      throw new Error('Failed to update document record');
+    }
   }
 }
 
@@ -338,4 +363,46 @@ export async function incrementRateLimit(
     .catch(() => {
       // Graceful degradation: rate_limits table may not exist yet
     });
+}
+
+// ---------------------------------------------------------------------------
+// Audit log
+// ---------------------------------------------------------------------------
+
+export type AuditAction =
+  | 'created'
+  | 'updated'
+  | 'deleted'
+  | 'viewed'
+  | 'collaborator_added'
+  | 'collaborator_removed';
+
+export async function logAuditEvent(
+  db: D1Database,
+  documentId: string,
+  userId: string,
+  action: AuditAction,
+  metadata?: Record<string, unknown>
+): Promise<void> {
+  try {
+    const id = crypto.randomUUID();
+    const createdAt = new Date().toISOString();
+    const metadataStr = metadata ? JSON.stringify(metadata) : null;
+
+    await db
+      .prepare(
+        `INSERT INTO document_audit_log (id, document_id, user_id, action, metadata, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .bind(id, documentId, userId, action, metadataStr, createdAt)
+      .run();
+  } catch (err) {
+    // Audit failures must never break the main flow — log and continue
+    logger.warn('Failed to write audit log entry', {
+      documentId,
+      userId,
+      action,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }

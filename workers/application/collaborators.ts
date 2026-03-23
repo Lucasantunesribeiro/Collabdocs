@@ -6,7 +6,9 @@ import {
   addCollaboratorRecord,
   removeCollaboratorRecord,
   checkCollaboratorAccess,
+  logAuditEvent,
 } from '../infrastructure/db';
+import { logger } from '../lib/logger';
 
 export interface CollaboratorEntry {
   id: string;
@@ -124,6 +126,10 @@ export async function addCollaborator(
   }
 
   await addCollaboratorRecord(db, documentId, user.id, email, permission);
+
+  logger.info('Collaborator added', { documentId, userId: user.id, email, permission });
+
+  await logAuditEvent(db, documentId, user.id, 'collaborator_added', { email });
 }
 
 export async function removeCollaborator(
@@ -153,4 +159,8 @@ export async function removeCollaborator(
   }
 
   await removeCollaboratorRecord(db, documentId, email);
+
+  logger.info('Collaborator removed', { documentId, userId: user.id, email });
+
+  await logAuditEvent(db, documentId, user.id, 'collaborator_removed', { email });
 }
