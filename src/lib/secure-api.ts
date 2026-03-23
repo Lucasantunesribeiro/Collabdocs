@@ -1,7 +1,7 @@
-// Secure API service using NextAuth session
+// Secure API service using NextAuth session JWT
 import type { Document } from '../types/shared'
 
-// Interface para sessão NextAuth
+// Interface for NextAuth session
 interface NextAuthSession {
   user: {
     id: string
@@ -11,10 +11,9 @@ interface NextAuthSession {
     image?: string
   }
   accessToken?: string
+  /** Raw NextAuth session JWT — used as Bearer token for the Worker API */
+  sessionToken?: string
 }
-
-// Tipo para sessão NextAuth que pode ser null
-type NextAuthSessionOrNull = NextAuthSession | null
 
 export interface CreateDocumentRequest {
   title: string
@@ -31,7 +30,6 @@ class SecureApiService {
   private baseUrl: string
 
   constructor() {
-    // Determinar URL da API baseado no ambiente
     if (typeof window !== 'undefined' && window.location.hostname.includes('vercel.app')) {
       this.baseUrl = 'https://collab-docs.collabdocs.workers.dev/api'
     } else if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
@@ -41,95 +39,58 @@ class SecureApiService {
     }
   }
 
-  /**
-   * Fazer requisição autenticada usando sessão NextAuth
-   */
+  private getBearerToken(session: NextAuthSession): string {
+    // Prefer the NextAuth session JWT; fall back to user ID for local dev
+    return session.sessionToken || session.user.id || ''
+  }
+
   private async authenticatedRequest<T>(
     endpoint: string,
     session: NextAuthSession,
     options: RequestInit = {}
   ): Promise<T> {
-    if (!session || !session.user) {
-      throw new Error('Usuário não autenticado')
+    if (!session?.user) {
+      throw new Error('User not authenticated')
     }
 
-    // Validar dados essenciais da sessão
     if (!session.user.email || !session.user.name) {
-      throw new Error('Sessão inválida - dados do usuário incompletos')
+      throw new Error('Invalid session — incomplete user data')
     }
 
-    console.log('[SecureAPI] Fazendo requisição autenticada:', {
-      endpoint,
-      user: {
-        id: session.user.id,
-        name: session.user.name,
-        email: session.user.email,
-        provider: session.user.provider
-      }
-    })
+    const token = this.getBearerToken(session)
+    if (!token) {
+      throw new Error('No authentication token available')
+    }
 
     const url = `${this.baseUrl}${endpoint}`
-    
+
     const config: RequestInit = {
       headers: {
         'Content-Type': 'application/json',
-        // Usar token NextAuth ou ID do usuário como fallback
-        'Authorization': `Bearer ${session.accessToken || session.user.id || 'fallback-token'}`,
-        // Enviar dados reais do usuário autenticado
-        'X-User-Profile': JSON.stringify({
-          id: session.user.id,
-          name: session.user.name,
-          email: session.user.email,
-          provider: session.user.provider,
-          image: session.user.image
-        }),
+        'Authorization': `Bearer ${token}`,
         ...options.headers,
       },
       ...options,
     }
 
-    try {
-      const response = await fetch(url, config)
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        console.error('[SecureAPI] Request failed:', {
-          status: response.status,
-          error: errorData
-        })
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`)
-      }
+    const response = await fetch(url, config)
 
-      const data = await response.json()
-      console.log('[SecureAPI] Request successful:', {
-        endpoint,
-        responseSize: JSON.stringify(data).length
-      })
-      
-      return data
-    } catch (error) {
-      console.error('[SecureAPI] Request error:', error)
-      throw error
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.error || `HTTP error! status: ${response.status}`)
     }
+
+    return response.json()
   }
 
-  /**
-   * Obter todos os documentos visíveis para o usuário atual
-   */
   async getDocuments(session: NextAuthSession): Promise<{ documents: Document[] }> {
     return this.authenticatedRequest<{ documents: Document[] }>('/documents', session)
   }
 
-  /**
-   * Obter documento específico (com verificação de permissão)
-   */
   async getDocument(id: string, session: NextAuthSession): Promise<{ document: Document; permission: string }> {
     return this.authenticatedRequest<{ document: Document; permission: string }>(`/documents/${id}`, session)
   }
 
-  /**
-   * Criar novo documento
-   */
   async createDocument(data: CreateDocumentRequest, session: NextAuthSession): Promise<{ document: Document }> {
     return this.authenticatedRequest<{ document: Document }>('/documents', session, {
       method: 'POST',
@@ -137,9 +98,6 @@ class SecureApiService {
     })
   }
 
-  /**
-   * Atualizar documento existente
-   */
   async updateDocument(id: string, data: UpdateDocumentRequest, session: NextAuthSession): Promise<{ document: Document; message: string }> {
     return this.authenticatedRequest<{ document: Document; message: string }>(`/documents/${id}`, session, {
       method: 'PUT',
@@ -147,16 +105,6 @@ class SecureApiService {
     })
   }
 
-  /**
-   * Obter histórico do documento
-   */
-  async getDocumentHistory(id: string, session: NextAuthSession): Promise<{ snapshots: any[] }> {
-    return this.authenticatedRequest<{ snapshots: any[] }>(`/documents/${id}/history`, session)
-  }
-
-  /**
-   * Adicionar colaborador a um documento
-   */
   async addCollaborator(documentId: string, email: string, session: NextAuthSession, permission: 'read' | 'write' = 'read'): Promise<{ message: string }> {
     return this.authenticatedRequest<{ message: string }>(`/documents/${documentId}/collaborators`, session, {
       method: 'POST',
@@ -164,9 +112,6 @@ class SecureApiService {
     })
   }
 
-  /**
-   * Remover colaborador de um documento
-   */
   async removeCollaborator(documentId: string, email: string, session: NextAuthSession): Promise<{ message: string }> {
     return this.authenticatedRequest<{ message: string }>(`/documents/${documentId}/collaborators`, session, {
       method: 'DELETE',
@@ -174,23 +119,10 @@ class SecureApiService {
     })
   }
 
-  /**
-   * Verificar se o usuário atual tem permissão para ver um documento
-   */
-  async checkDocumentPermission(documentId: string, session: NextAuthSession): Promise<{ hasAccess: boolean; permission: string }> {
-    return this.authenticatedRequest<{ hasAccess: boolean; permission: string }>(`/documents/${documentId}/permission`, session)
-  }
-
-  /**
-   * Obter colaboradores ativos de um documento
-   */
   async getDocumentCollaborators(documentId: string, session: NextAuthSession): Promise<{ collaborators: any[]; total: number }> {
     return this.authenticatedRequest<{ collaborators: any[]; total: number }>(`/documents/${documentId}/collaborators`, session)
   }
 
-  /**
-   * Deletar um documento (apenas proprietário)
-   */
   async deleteDocument(id: string, session: NextAuthSession): Promise<{ message: string }> {
     return this.authenticatedRequest<{ message: string }>(`/documents/${id}`, session, {
       method: 'DELETE',
