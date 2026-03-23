@@ -62,9 +62,9 @@ CollabDocs.API
 
 ## ORM / Banco de Dados
 
-- **Entity Framework Core 8.0**: ORM com configuração Fluent API
-- **Microsoft.EntityFrameworkCore.Sqlite**: banco SQLite local
-- Pronto para troca para **SQL Server** ou **PostgreSQL** via provider swap
+- **Entity Framework Core 8.0 + Npgsql**: ORM com configuração Fluent API, banco **PostgreSQL**
+- Migrations geradas via `dotnet ef migrations add InitialCreate` — padrão enterprise
+- `db.Database.Migrate()` no startup para aplicação automática em deploy
 
 Configuração da entidade Document:
 - `Visibility` e `Permission` persistidos como strings lowercase (não como int)
@@ -85,10 +85,17 @@ Configuração da entidade Document:
 - Claims extraídos do token: `sub` (userId), `email`, `name`
 - Sem exposição de stack trace em respostas de erro
 
+## Observabilidade
+
+- **OpenTelemetry 1.9**: tracing distribuído via OTLP — spans em `CreateDocument` e `UpdateDocument`
+- Compatível com **Honeycomb.io** e qualquer backend OTLP; fallback para console em dev
+- Configuração via env vars standard: `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_SERVICE_NAME`
+
 ## Infraestrutura
 
 - **Dockerfile multi-stage**: `sdk:8.0` para build → `aspnet:8.0` para runtime (imagem menor)
-- **EnsureCreated** no startup: aplica schema automaticamente em dev (substituível por migrations em prod)
+- **Render.com Blueprint** (`render.yaml`): deploy automático com PostgreSQL gerenciado
+- URL de produção: `https://collabdocs-dotnet-api.onrender.com/swagger`
 
 # 4 Domínio e Regras de Negócio
 
@@ -209,13 +216,15 @@ Sem necessidade de banco real nos testes unitários.
 | Clean Architecture | Sim | Camadas com dependência correta |
 | CQRS | Sim | MediatR commands/queries/handlers |
 | MediatR | Sim | 5 handlers registrados |
-| EF Core | Sim | AppDbContext, repositórios, Fluent API |
+| EF Core | Sim | AppDbContext, repositórios, Fluent API, migrations geradas |
 | JWT Bearer | Sim | Autenticação com HS256 |
 | Swagger/OpenAPI | Sim | Documentação com Bearer support |
 | xUnit | Sim | 10 testes unitários |
 | Moq | Sim | Mocking de repositórios e serviços |
 | FluentAssertions | Sim | Assertions expressivas |
 | Docker | Sim | Dockerfile multi-stage |
+| OpenTelemetry | Sim | OTLP exporter, spans em handlers críticos |
+| PostgreSQL | Sim | Provider Npgsql, migrations geradas, deploy em Render |
 
 ## Alinhamento com vagas Junior/Pleno .NET
 
@@ -269,12 +278,10 @@ Na Infrastructure eu implemento as interfaces com EF Core SQLite. A camada de AP
 
 # 10 Pontos a Melhorar
 
-- Migrar para PostgreSQL com migrations geradas via `dotnet ef migrations add`
 - Adicionar FluentValidation nos handlers para validação centralizada de commands
 - Implementar pipeline behaviors do MediatR (logging, validação, retry)
-- Adicionar testes de integração com banco in-memory
-- Adicionar OpenTelemetry para tracing distribuído
-- Implementar paginação nas queries de listagem
+- Adicionar testes de integração com banco PostgreSQL via Testcontainers
+- Implementar paginação cursor-based nas queries de listagem
 
 # 11 Como Colocar no Currículo
 
@@ -283,7 +290,7 @@ Web API em C# com Clean Architecture, CQRS (MediatR), EF Core (SQLite), JWT Bear
 
 # 12 Nível do Projeto
 
-**Classificação: Junior Sênior / Pleno inicial (do ponto de vista .NET)**
+**Classificação: Pleno inicial (do ponto de vista .NET)**
 
 O projeto demonstra:
 
@@ -294,32 +301,32 @@ O projeto demonstra:
 
 Ainda não chega a **Pleno consolidado** porque:
 
-- Sem banco enterprise com migrations gerenciadas
-- Sem pipeline behaviors MediatR (validação, logging centralizado)
-- Sem testes de integração (apenas unitários)
-- Sem observabilidade com OpenTelemetry/Jaeger
+- Sem pipeline behaviors MediatR (validação centralizada com FluentValidation)
+- Sem testes de integração (apenas unitários com mocks)
+- Sem paginação nas queries de listagem
 
-Como peça de portfólio para vagas **Junior/Pleno .NET**, é diretamente relevante e demonstrável em entrevistas técnicas.
+Como peça de portfólio para vagas **Pleno .NET**, é diretamente relevante e demonstrável em entrevistas técnicas com deploy em produção.
 
 # 13 Score Final
 
-**Nota: 7.5 / 10**
+**Nota: 8.5 / 10**
 
 Justificativa:
 
-O projeto atinge um nível técnico consistente para vagas Junior/Pleno .NET:
+O projeto evoluiu de **7.5 para 8.5** com as melhorias implementadas:
 
 **Positivos:**
 - Clean Architecture real (+2.0 vs projeto sem arquitetura)
 - CQRS com MediatR (+1.0)
 - Testes unitários com mocks (+1.0)
 - Entidade rica com comportamento de domínio (+0.5)
+- PostgreSQL com migrations geradas (+0.5, antes SQLite -0.5)
+- OpenTelemetry com OTLP exporter (+0.5)
+- Deploy em produção no Render.com com Swagger acessível (+0.3)
 - Swagger, JWT, Docker (+0.5)
 
 **Limitações:**
-- Banco SQLite em vez de PostgreSQL/SQL Server enterprise (-0.5)
-- Sem migrations EF Core geradas (-0.3)
 - Sem pipeline behaviors MediatR (-0.2)
-- Sem testes de integração (-0.5)
+- Sem testes de integração (-0.3)
 
-Como primeiro projeto .NET de portfólio com arquitetura sólida, é uma base forte para evoluir.
+Para vagas **Pleno .NET** com banco enterprise, observabilidade e deploy em produção demonstráveis.

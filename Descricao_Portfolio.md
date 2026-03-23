@@ -17,13 +17,16 @@ O Worker foi reestruturado em camadas reais:
 - `workers/domain/types.ts`: interfaces de domínio (Document, User, AuthenticatedUser, Permission)
 - `workers/infrastructure/db.ts`: repositório D1 com todas as queries SQL
 - `workers/middleware/auth.ts`: verificação JWT (Web Crypto API, sem dependências extras)
-- `workers/middleware/rateLimit.ts`: rate limiting por IP (20 req/min via D1)
+- `workers/middleware/rateLimit.ts`: rate limiting por IP (20 req/min via Durable Object)
 - `workers/middleware/cors.ts`: CORS com whitelist via env var
 - `workers/application/documents.ts`: casos de uso de documentos (lógica de negócio pura)
-- `workers/application/collaborators.ts`: casos de uso de colaboradores
+- `workers/application/collaborators.ts`: casos de uso de colaboradores (+ enfileiramento de email)
 - `workers/api/handlers.ts`: handlers HTTP finos com logging de request
-- `workers/api/router.ts`: roteamento com timing de request
+- `workers/api/router.ts`: roteamento com timing de request + upgrade WebSocket para DO
 - `workers/lib/logger.ts`: logger JSON estruturado (NDJSON, compatível com Cloudflare Logpush)
+- `workers/collaboration/DocumentSession.ts`: Durable Object para sessões WebSocket em tempo real
+- `workers/collaboration/RateLimiter.ts`: Durable Object para rate limiting in-memory por IP
+- `workers/queues/emailConsumer.ts`: consumer da Cloudflare Queue para envio via MailChannels
 
 Organização real do frontend:
 
@@ -37,9 +40,9 @@ Organização real do frontend:
 Localizado em `dotnet/`, implementa a mesma lógica de negócio em Clean Architecture:
 
 - `CollabDocs.Domain`: entidades ricas, interfaces de repositório, enums
-- `CollabDocs.Application`: CQRS com MediatR (commands, queries, handlers)
-- `CollabDocs.Infrastructure`: EF Core + SQLite, implementações de repositório
-- `CollabDocs.API`: controllers, JWT Bearer, Swagger, CORS
+- `CollabDocs.Application`: CQRS com MediatR (commands, queries, handlers, `Telemetry.cs` ActivitySource)
+- `CollabDocs.Infrastructure`: EF Core + Npgsql (PostgreSQL), migrations geradas, repositórios
+- `CollabDocs.API`: controllers, JWT Bearer, Swagger, CORS, OpenTelemetry (OTLP/Honeycomb)
 
 # 3 Stack Tecnológica
 
@@ -47,19 +50,20 @@ Localizado em `dotnet/`, implementa a mesma lógica de negócio em Clean Archite
 
 - **Cloudflare Workers**: API REST serverless com baixa latência global
 - **TypeScript**: tipagem ponta a ponta
-- **@tsndr/cloudflare-worker-jwt**: validação JWT compatível com o runtime do Worker
-- **jsonwebtoken**: geração do workerToken no Next.js
-- **NextAuth**: autenticação OAuth com GitHub e Google
-- **Cloudflare D1**: banco SQL serverless (SQLite-compatible)
+- **Web Crypto API nativa**: validação JWT HS256 sem dependências externas
+- **Cloudflare D1**: banco SQL serverless (SQLite-compatible) com 8 migrações versionadas
+- **Cloudflare Durable Objects**: sessões WebSocket em tempo real (`DocumentSession`) + rate limiting in-memory por IP (`RateLimiter`)
+- **Cloudflare Queues + MailChannels**: mensageria assíncrona para notificações de email ao adicionar colaborador
 - **SQL puro com prepared statements**: sem ORM, seguro contra SQL injection
 
 ## Backend C# (ASP.NET Core 8)
 
 - **ASP.NET Core 8 Web API**: endpoints REST com controllers e DI nativa
 - **MediatR 12**: padrão CQRS (commands/queries/handlers)
-- **Entity Framework Core 8**: ORM com SQLite (local) / SQL Server (produção)
+- **Entity Framework Core 8 + Npgsql**: ORM com PostgreSQL (migrations geradas via EF CLI)
 - **JWT Bearer (Microsoft.AspNetCore.Authentication.JwtBearer)**: autenticação com HS256
 - **Swashbuckle/Swagger**: documentação OpenAPI com suporte a Bearer token
+- **OpenTelemetry 1.9**: tracing distribuído com OTLP exporter (Honeycomb.io); spans nos handlers críticos
 - **xUnit + Moq + FluentAssertions**: testes unitários
 
 ## Frontend
@@ -71,17 +75,18 @@ Localizado em `dotnet/`, implementa a mesma lógica de negócio em Clean Archite
 
 ## Banco de Dados
 
-- **Cloudflare D1** (Worker): banco SQL serverless com 7 migrações versionadas
-  - documents, users, document_collaborators, rate_limits, document_audit_log
+- **Cloudflare D1** (Worker): banco SQL serverless com 8 migrações versionadas
+  - documents, users, document_collaborators, document_audit_log
   - Coluna `version` para controle de concorrência otimista
-- **SQLite via EF Core** (ASP.NET): banco local com EnsureCreated no startup
+- **PostgreSQL via EF Core + Npgsql** (ASP.NET): migrations geradas (`InitialCreate`), `db.Database.Migrate()` no startup
 
 ## Infraestrutura e DevOps
 
-- **Vercel**: deploy automático do frontend (push para main)
-- **Wrangler**: deploy e configuração do Worker e do D1
-- **Docker**: Dockerfile multi-stage + docker-compose para stack local completa (frontend + worker)
-- **GitHub Actions**: pipeline CI funcional com type-check, build, testes e security audit
+- **Vercel**: deploy automático do frontend (push para main) — `collabdocs-app.vercel.app`
+- **Cloudflare Workers**: deploy via Wrangler — `collab-docs.collabdocs.workers.dev`
+- **Render.com**: .NET API com PostgreSQL gerenciado via Blueprint (`render.yaml`) — `collabdocs-dotnet-api.onrender.com`
+- **Docker**: Dockerfile multi-stage + docker-compose para stack local completa
+- **GitHub Actions**: pipeline CI com 5 jobs: quality, test, e2e, security, dotnet-test
 - **package-lock.json**: lockfile para `npm ci` reprodutível em CI
 
 ## Observabilidade
@@ -90,13 +95,13 @@ Localizado em `dotnet/`, implementa a mesma lógica de negócio em Clean Archite
 - **Request timing middleware**: todas as requisições logam `{ method, path, status, durationMs }`
 - **Audit trail**: tabela `document_audit_log` captura create/update/delete/collaborator events com metadata
 - **Health check rico**: `GET /api/health` testa conectividade com D1, retorna `healthy`/`degraded`
-- **ILogger estruturado** no backend .NET: logs com campos padronizados
+- **OpenTelemetry (.NET)**: tracing distribuído via OTLP — spans em `CreateDocument` e `UpdateDocument`; exporter configurável via env vars; compatível com Honeycomb.io
 
 ## Tecnologias não implementadas (documentação corrigida)
 
 - **Cloudflare KV**: não utilizado (removido da documentação)
 - **R2**: não implementado (removido da documentação)
-- **Yjs/WebSocket/CRDT**: não implementado; colaboração atual é autosave HTTP (documentado honestamente)
+- **Yjs/CRDT**: colaboração real-time usa WebSocket + broadcast simples via Durable Objects (sem Yjs)
 - **Turborepo/monorepo**: não há workspaces reais (removido da documentação)
 
 # 4 Fluxo do Sistema
@@ -118,14 +123,24 @@ Localizado em `dotnet/`, implementa a mesma lógica de negócio em Clean Archite
 3. Controle de concorrência otimista: `PUT /api/documents/:id` com `expectedVersion` retorna 409 se outro usuário modificou o documento
 4. Toda operação gera entrada em `document_audit_log`
 
-## Fluxo de colaboração implementado
+## Fluxo de colaboração em tempo real (WebSocket + Durable Objects)
 
-1. O documento é carregado pela API
-2. O usuário edita o conteúdo localmente
-3. Após intervalo sem digitação, o frontend envia `PUT` para persistência
-4. O Worker atualiza o banco e incrementa a versão do documento
+1. Frontend abre conexão WebSocket em `GET /api/documents/:id/ws`
+2. Router encaminha para a instância `DocumentSession` DO do documento
+3. DO aceita upgrade, registra o cliente na sessão com `userId` e `userName`
+4. Ao digitar, frontend envia `{ type: "update", delta: "..." }` pelo socket
+5. DO faz broadcast para todos os outros participantes conectados
+6. Eventos de presença (`join`/`leave`) são propagados para a lista de usuários ativos
+7. Novo cliente recebe imediatamente a lista de usuários presentes no `join`
 
-Limitação documentada: não há WebSocket, CRDT ou OT. O modelo atual é **autosave HTTP com versionamento**. A promessa de colaboração em tempo real foi removida da interface e da documentação.
+## Fluxo de notificação por email (Cloudflare Queues)
+
+1. Owner adiciona colaborador via `POST /api/documents/:id/collaborators`
+2. Handler chama `addCollaborator(env.DB, user, id, email, permission, env.NOTIFICATION_QUEUE)`
+3. Use case persiste no D1, registra em `document_audit_log`, enfileira mensagem no Queue
+4. Consumer (`processEmailQueue`) recebe batch e chama MailChannels API
+5. Email HTML enviado ao colaborador com link direto ao documento
+6. Falha no Queue = `message.retry()` com até 3 tentativas; DLQ configurada
 
 # 5 Conceitos de Engenharia Aplicados
 
@@ -246,62 +261,57 @@ Em termos de DevOps, o projeto tem pipeline GitHub Actions funcional, Docker com
 
 # 9 Pontos a Melhorar (estado atual)
 
-- Colaboração em tempo real ainda não implementada (WebSocket/CRDT); documentação é honesta sobre isso
-- EF Core não tem migrations geradas (usa EnsureCreated no desenvolvimento)
-- Backend .NET ainda usa SQLite em vez de PostgreSQL/SQL Server enterprise
-- Rate limiting no Worker usa D1 (pode saturar em alta carga); ideal seria Cloudflare Durable Objects
-- Não há mensageria ou processamento assíncrono real
-- Testes e2e com Playwright ainda não implementados para o fluxo completo
+- WebSocket ainda sem validação de token JWT (browsers não enviam Authorization em WS upgrade); deve adicionar `?token=...` no query param e validar no `DocumentSession.fetch()`
+- Colaboração WebSocket usa broadcast simples (sem CRDT/Yjs): dois usuários editando simultaneamente podem ter conflito na persistência HTTP
+- Sem testes de integração com banco real no .NET (apenas unitários com mocks)
+- Sem pipeline behaviors MediatR (logging centralizado, validação FluentValidation)
+- Sem paginação nas queries de listagem de documentos
 
 # 10 Melhorias Prioritárias Restantes Para Portfólio
 
-1. **Migrar banco do backend .NET para PostgreSQL**
-   Usar o provider `Npgsql` com `dotnet ef migrations add` para ter migrations geradas e um banco enterprise.
+1. **Validar JWT no WebSocket** — passar `?token=` no URL de upgrade e verificar no `DocumentSession.fetch()` antes de aceitar a sessão
 
-2. **Adicionar testes e2e com Playwright**
-   Testa o fluxo completo: login, criar documento, editar, compartilhar, verificar permissões.
+2. **Pipeline behaviors MediatR** — logging e validação centralizada com FluentValidation em todos os commands
 
-3. **Implementar colaboração em tempo real (WebSocket)**
-   Cloudflare Durable Objects ou servidor WebSocket standalone com Yjs.
+3. **Testes de integração .NET** — banco PostgreSQL in-memory ou via Testcontainers para testes de repositório
 
-4. **Adicionar mensageria para notificações**
-   Enviar email quando um colaborador é adicionado, usando Cloudflare Queues ou SQS.
-
-5. **Adicionar métricas e tracing**
-   OpenTelemetry no backend .NET para traces e métricas, integrado ao Jaeger ou Honeycomb.
+4. **Paginação nas queries** — cursor-based pagination em `GET /api/documents`
 
 # 11 Como Colocar no Currículo
 
-Plataforma de documentos colaborativos desenvolvida em duas versões de backend:
+Plataforma de documentos colaborativos fullstack com dois backends independentes:
 
-- **TypeScript + Cloudflare Workers**: API REST serverless com D1, autenticação JWT, CORS, rate limiting, logger estruturado e audit trail.
-- **C# + ASP.NET Core 8**: Clean Architecture, CQRS com MediatR, EF Core, JWT Bearer, Swagger e testes xUnit.
+- **TypeScript + Cloudflare Workers**: API REST serverless, WebSocket em tempo real via Durable Objects, notificações assíncronas via Cloudflare Queues + MailChannels, rate limiting in-memory por Durable Object, logger JSON estruturado e audit trail.
+- **C# + ASP.NET Core 8**: Clean Architecture, CQRS com MediatR, EF Core + PostgreSQL (migrations geradas), JWT Bearer, Swagger e OpenTelemetry (OTLP/Honeycomb).
 
-Frontend em **Next.js 14**, autenticação OAuth com NextAuth, testes com **Vitest** (44 casos) e **xUnit** (10 casos), **Docker** e pipeline **GitHub Actions** funcional.
+Frontend em **Next.js 14**, autenticação OAuth (NextAuth), testes com **Vitest** (41 casos), **xUnit** (10 casos) e **Playwright E2E**, **Docker** e pipeline **GitHub Actions** com 5 jobs.
+
+Deployado em produção: Vercel (frontend), Cloudflare Workers (API), Render.com (.NET + PostgreSQL).
 
 # 12 Nível do Projeto
 
-**Classificação: Junior+ / Pleno em progresso**
+**Classificação: Pleno inicial (TypeScript/Cloud) / Junior Sênior (.NET)**
 
-Após as melhorias, o projeto passou do patamar de MVP fullstack para um portfolio técnico consistente:
+O projeto atingiu maturidade de portfólio para vagas Pleno:
 
-- Clean Architecture implementada de verdade no backend .NET
-- CQRS com handlers testáveis e isolados
-- Testes automatizados reais (não apenas declarados)
-- CI/CD que realmente executa
-- Docker para reprodutibilidade local
-- Observabilidade estruturada e audit trail
-- Endurecimento de segurança (sem endpoints perigosos, auth exclusiva por JWT)
-- Alinhamento com stack .NET (objetivo profissional)
+**TypeScript / Cloudflare:**
+- Serverless com Durable Objects (stateful), Queues (assíncrono), D1 (persistência)
+- Real-time WebSocket com broadcast de presença
+- Mensageria com retry automático e DLQ
+- Rate limiting in-memory sem banco (padrão cloud-native)
+- Observabilidade estruturada com audit trail
 
-Ele ainda não chega a **Pleno consolidado** porque faltam:
+**.NET:**
+- Clean Architecture com regra de dependência aplicada
+- CQRS com MediatR, handlers testáveis com mocks
+- PostgreSQL com migrations geradas via EF CLI
+- OpenTelemetry com spans nos handlers críticos e exporter OTLP
+- Deploy em nuvem com banco gerenciado (Render + PostgreSQL)
 
-- Banco enterprise (PostgreSQL/SQL Server) com migrations geradas
-- Testes e2e funcionando
-- Mensageria real
-- Colaboração em tempo real
-
-Mas já é uma peça principal válida para vagas Junior/Pleno .NET, não apenas complementar.
+**Pontos que ainda limitam a Pleno consolidado:**
+- WebSocket sem auth JWT (browsers não suportam Authorization em upgrade)
+- Sem pipeline behaviors MediatR (validação centralizada)
+- Sem testes de integração .NET com banco real
 
 # 13 Checklist de Mercado
 
@@ -312,38 +322,51 @@ Mas já é uma peça principal válida para vagas Junior/Pleno .NET, não apenas
 | React | Sim | Frontend em Next.js/React |
 | APIs REST | Sim | Dois backends expõem REST |
 | SQL | Sim | D1 (SQLite serverless) + EF Core SQLite |
-| PostgreSQL / SQL Server | Não | EF Core pronto para trocar; usa SQLite hoje |
-| EF Core | Sim | Infrastructure layer do backend .NET |
+| PostgreSQL / SQL Server | Sim | EF Core + Npgsql + migrations geradas (backend .NET) |
+| EF Core | Sim | Infrastructure layer do backend .NET com migrations |
 | Clean Architecture | Sim | Backend .NET implementa de forma concreta |
 | DDD | Parcial | Entidade Document com comportamento, sem aggregates completos |
 | CQRS | Sim | MediatR no backend .NET |
 | Microservices | Não | Um único backend por deploy |
-| Event Driven | Não | Sem mensageria implementada |
+| Event Driven | Sim | Cloudflare Queues para notificações assíncronas por email |
 | OAuth / autenticação | Sim | NextAuth com Google e GitHub |
 | Autorização / ACL | Sim | Owner e colaboradores com permissões |
-| Rate limiting | Sim | 20 req/min por IP (D1) |
+| Rate limiting | Sim | 20 req/min por IP via Durable Object (in-memory) |
+| WebSocket / Real-time | Sim | Durable Objects com broadcast de presença e atualizações |
 | Docker | Sim | Dockerfile multi-stage + docker-compose |
-| CI/CD | Sim | GitHub Actions funcional (3 jobs) |
-| Testes automatizados | Sim | 44 Vitest (Worker) + 10 xUnit (ASP.NET) |
-| Observabilidade | Sim | Logger JSON, audit trail, health check com DB check |
-| Cloud | Sim | Vercel + Cloudflare Workers |
+| CI/CD | Sim | GitHub Actions funcional (5 jobs: quality, test, e2e, security, dotnet) |
+| Testes automatizados | Sim | 41 Vitest (Worker) + 10 xUnit (ASP.NET) + Playwright E2E |
+| Observabilidade | Sim | Logger JSON, audit trail, health check, OpenTelemetry OTLP |
+| Cloud | Sim | Vercel + Cloudflare Workers + Render.com |
 | AWS | Não | Cloud principal não é AWS |
 | Segurança | Sim | Auth JWT, ACL, prepared statements, sem debug público, CORS env-driven |
-| Migrations | Sim | 7 SQL migrations (D1) + EF Core EnsureCreated |
+| Migrations | Sim | 8 SQL migrations (D1) + EF Core migrations geradas (PostgreSQL) |
 | Controle de concorrência | Sim | Optimistic locking via campo version |
 
 # 14 Score Final do Projeto
 
-**Nota final: 7.8 / 10**
+**Nota final: 8.8 / 10**
 
 Justificativa:
 
-O projeto evoluiu de **5.8 para 7.8** com as melhorias implementadas. Os principais ganhos:
+O projeto evoluiu de **5.8 → 7.8 → 8.8** com todas as melhorias implementadas.
 
-- **+1.0**: Backend C#/ASP.NET Core 8 com Clean Architecture real → alinhamento com stack alvo
-- **+0.4**: Testes automatizados reais (Vitest + xUnit) → credibilidade em entrevistas
-- **+0.3**: CI/CD funcional → profissionalismo operacional
-- **+0.2**: Docker e ambiente reproduzível → requisito comum em vagas
-- **+0.1**: Observabilidade estruturada e audit trail → maturidade enterprise
+Ganhos da primeira rodada (5.8 → 7.8):
+- **+1.0**: Backend C#/ASP.NET Core 8 com Clean Architecture real
+- **+0.4**: Testes automatizados reais (Vitest + xUnit)
+- **+0.3**: CI/CD funcional
+- **+0.2**: Docker e ambiente reproduzível
+- **+0.1**: Observabilidade estruturada e audit trail
+
+Ganhos da segunda rodada (7.8 → 8.8):
+- **+0.4**: WebSocket em tempo real via Durable Objects → feature cloud-native real
+- **+0.3**: Cloudflare Queues + MailChannels → mensageria assíncrona de produção
+- **+0.2**: PostgreSQL + EF Core migrations → banco enterprise no .NET
+- **+0.2**: OpenTelemetry com OTLP → observabilidade distribuída profissional
+- **+0.2**: Playwright E2E + 5 jobs CI → pipeline de qualidade completo
+- **+0.2**: Deploy em produção com links demo → proof of work concreto
+- **-0.2**: WebSocket sem auth JWT, sem pipeline behaviors MediatR
+
+Para chegar a **9.0+**: validar JWT no WebSocket, pipeline behaviors MediatR, testes de integração com banco real.
 
 O projeto ainda não alcança **9.0+** porque faltam banco enterprise, testes e2e, mensageria real e colaboração em tempo real. Mas está claramente no patamar de um candidato que entende engenharia de software além de "fazer funcionar".

@@ -1,96 +1,156 @@
+# CollabDocs
 
-# CollabDocs – Plataforma de Documentos Colaborativos
+Plataforma de documentos colaborativos com edição em tempo real, construída sobre Cloudflare Workers (TypeScript) e ASP.NET Core 8 (C#).
 
-## Visão Geral
+## Links de Produção
 
-CollabDocs é uma solução moderna para edição colaborativa de documentos, construída com tecnologias de ponta e arquitetura escalável.
+| Serviço | URL |
+|---|---|
+| **Frontend** (Next.js / Vercel) | [https://collabdocs-app.vercel.app](https://collabdocs-app.vercel.app) |
+| **Worker API** (Cloudflare Workers) | [https://collab-docs.collabdocs.workers.dev](https://collab-docs.collabdocs.workers.dev) |
+| **Worker Health** | [https://collab-docs.collabdocs.workers.dev/api/health](https://collab-docs.collabdocs.workers.dev/api/health) |
+| **.NET API** (Render.com) | [https://collabdocs-dotnet-api.onrender.com](https://collabdocs-dotnet-api.onrender.com) |
+| **.NET Swagger** | [https://collabdocs-dotnet-api.onrender.com/swagger](https://collabdocs-dotnet-api.onrender.com/swagger) |
 
-- **Backend:** Cloudflare Workers (TypeScript)
-- **Frontend:** Next.js 15, React, Tailwind CSS
-- **Banco de Dados:** Cloudflare D1 (SQL)
-- **Cache:** Cloudflare KV
-- **Monorepo:** Turborepo
-- **Deploy:** Vercel (frontend) + Cloudflare Workers (backend)
+## Stack
 
-## Acesso
+### TypeScript Worker (Cloudflare)
+- **Runtime**: Cloudflare Workers (V8 isolates, zero cold-start)
+- **Banco**: Cloudflare D1 (SQLite serverless)
+- **WebSocket**: Cloudflare Durable Objects (`DocumentSession`) — sessões de colaboração em tempo real
+- **Rate Limiting**: Cloudflare Durable Objects (`RateLimiter`) — 20 req/min por IP, in-memory
+- **Email**: Cloudflare Queues + MailChannels — notificações assíncronas ao adicionar colaborador
+- **Auth**: JWT Bearer (HS256) verificado com Web Crypto API nativa
+- **Observabilidade**: Cloudflare Logpush + structured JSON logging (NDJSON)
 
-- **API:** [https://collab-docs.collabdocs.workers.dev/api](https://collab-docs.collabdocs.workers.dev/api)
-- **Auth:** [https://collab-docs.collabdocs.workers.dev/auth/oauth](https://collab-docs.collabdocs.workers.dev/auth/oauth)
-- **Frontend:** Deploy automático via Vercel
+### ASP.NET Core 8 (C# / .NET)
+- **Arquitetura**: Clean Architecture (Domain → Application → Infrastructure → API)
+- **CQRS**: MediatR 12 — commands/queries/handlers isolados
+- **ORM**: Entity Framework Core 8 + Npgsql (PostgreSQL)
+- **Auth**: JWT Bearer HS256 (mesmo secret do Worker)
+- **Observabilidade**: OpenTelemetry (OTLP) — tracing distribuído compatível com Honeycomb.io
+- **Testes**: xUnit + Moq + FluentAssertions (10 testes unitários)
 
-## Deploy & Configuração
+### Frontend (Next.js / Vercel)
+- **Framework**: Next.js 14 App Router
+- **Auth**: NextAuth (OAuth GitHub + Google)
+- **Real-time**: WebSocket para edição colaborativa
 
-- **Deploy automático:** Push para `main` → Vercel realiza build e deploy.
-- **Build Command:** `cd apps/web && npm run build`
-- **Output Directory:** `apps/web/.next`
-- **Variáveis de ambiente (Vercel):**
-   ```
-   NEXT_PUBLIC_API_URL=https://collab-docs.collabdocs.workers.dev
-   NEXT_PUBLIC_WS_URL=https://collab-docs.collabdocs.workers.dev
-   ```
+## Arquitetura do Worker
 
-## Funcionalidades
-
-- Edição colaborativa de documentos (modo demo)
-- Autenticação OAuth (GitHub/Google)
-- Dashboard estático com exemplos
-- API RESTful documentada
-- Persistência e isolamento de conteúdo por documento
-- Salvamento automático com debounce
-- CORS dinâmico e seguro
-- JWT simplificado (protótipo)
-
-## Arquitetura
-
-- **Frontend:** Next.js App Router, React, Tailwind CSS
-- **Backend:** Cloudflare Workers, API centralizada, integração com D1 e KV
-- **Infraestrutura:** Deploy automatizado, logs em tempo real, scripts de migração
-
-## Como Executar
-
-**Backend:**
-```bash
-wrangler dev         # Desenvolvimento local
-wrangler deploy      # Deploy para Cloudflare Workers
-wrangler tail        # Logs em tempo real
+```
+Request
+  ↓
+router.ts        — URL routing + request timing
+  ↓
+middleware/      — JWT auth, CORS, DO-based rate limiting
+  ↓
+handlers.ts      — HTTP parsing, thin orchestration
+  ↓
+application/     — Use cases (documents, collaborators)
+  ↓
+infrastructure/  — D1 SQL queries (pure functions)
 ```
 
-**Frontend:**
+## Desenvolvimento Local
+
+### Pré-requisitos
+- Node.js 20+
+- Docker + Docker Compose
+- .NET 8 SDK (para o backend C#)
+
+### Worker + Frontend
 ```bash
-cd apps/web
-npm run dev          # Desenvolvimento local
+npm install
+npm run dev          # Next.js frontend (localhost:3000)
+wrangler dev         # Worker local (localhost:8787)
 ```
 
-**Deploy:**
+### Stack completa com Docker
 ```bash
-git push origin main # Deploy automático na Vercel
+docker-compose up    # PostgreSQL + .NET API + Next.js
 ```
 
-**Migração de Banco:**
+### .NET API isolada
 ```bash
-./scripts/apply-migration-0002.ps1
+cd dotnet
+dotnet run --project src/CollabDocs.API
+# Disponível em http://localhost:5000/swagger
+```
+
+### Banco de dados (D1 local)
+```bash
+wrangler d1 execute COLLAB_DOCS_DB --local --file migrations/0001_init.sql
+# Repetir para cada migration
 ```
 
 ## Testes
 
-- Testes automatizados com Playwright e Vitest
-- Scripts para validação de endpoints e persistência
+```bash
+# Unit tests (Worker TypeScript) — 41 testes
+npx vitest run tests/unit/
 
-## Segurança
+# xUnit (.NET) — 10 testes
+cd dotnet && dotnet test
 
-- CORS com whitelist dinâmica
-- JWT para autenticação (reforço em produção)
-- Separação clara de rotas e headers
+# E2E (Playwright)
+npx playwright test
+```
 
-## Roadmap
+## CI/CD
 
-- Habilitar colaboração em tempo real (Yjs + WebSocket)
-- Snapshots e histórico de versões (R2)
-- Permissões avançadas e compartilhamento
-- OAuth completo (GitHub/Google)
+GitHub Actions (`main` branch):
 
----
+| Job | O que faz |
+|---|---|
+| `quality` | TypeScript typecheck + Next.js build |
+| `test` | Vitest unit tests |
+| `e2e` | Playwright E2E |
+| `security` | npm audit |
+| `dotnet-test` | dotnet build + xUnit |
 
-**CollabDocs** – Plataforma robusta, escalável e pronta para produção. Contribuições são bem-vindas!
+## Deploy
 
----
+### Worker (Cloudflare)
+```bash
+wrangler login
+wrangler deploy
+```
+
+### .NET API (Render.com)
+O arquivo `render.yaml` define o Blueprint. No dashboard do Render:
+1. **New → Blueprint** → conectar este repositório
+2. As variáveis `ConnectionStrings__Default` (auto via banco gerenciado) e `Jwt__Secret` serão criadas
+3. Para OpenTelemetry (Honeycomb): definir `OTEL_EXPORTER_OTLP_ENDPOINT` e `OTEL_EXPORTER_OTLP_HEADERS`
+
+### Frontend (Vercel)
+Deploy automático via push para `main`. Variáveis necessárias:
+```
+NEXTAUTH_SECRET=<mesmo valor do NEXTAUTH_SECRET do Worker>
+GITHUB_ID=<app OAuth do GitHub>
+GITHUB_SECRET=<secret do app>
+GOOGLE_CLIENT_ID=<credencial Google>
+GOOGLE_CLIENT_SECRET=<secret Google>
+NEXT_PUBLIC_API_URL=https://collab-docs.collabdocs.workers.dev/api
+NEXT_PUBLIC_WS_URL=wss://collab-docs.collabdocs.workers.dev
+```
+
+## Variáveis de Ambiente do Worker
+
+Configurar secrets no dashboard Cloudflare (`wrangler secret put <KEY>`):
+
+| Variável | Descrição |
+|---|---|
+| `NEXTAUTH_SECRET` | Secret compartilhado para JWT (HS256) |
+| `ALLOWED_ORIGINS` | Origins CORS comma-separated |
+| `GITHUB_CLIENT_ID/SECRET` | OAuth GitHub |
+| `GOOGLE_CLIENT_ID/SECRET` | OAuth Google |
+
+## Funcionalidades
+
+- **Documentos**: CRUD com controle de acesso (owner/write/read) e optimistic locking (versão + 409)
+- **Colaboradores**: Adicionar/remover por email, notificação por email automática via Cloudflare Queues
+- **Real-time**: WebSocket via Durable Objects — presença de usuários e broadcast de atualizações
+- **Audit trail**: Todas as operações de escrita registradas em `document_audit_log`
+- **Rate limiting**: 20 req/min por IP via Durable Object (fail-open)
+- **Segurança**: Sem debug endpoints, CORS por origin whitelist, JWT Bearer only
