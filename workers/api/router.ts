@@ -74,7 +74,7 @@ export default {
     // Rate limiting on public API paths (fail-open)
     if (path.startsWith('/api/')) {
       try {
-        const allowed = await checkRateLimit(env.DB, request);
+        const allowed = await checkRateLimit(env, request);
         if (!allowed) {
           return timed(Promise.resolve(rateLimitExceeded(request, env)));
         }
