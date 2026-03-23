@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: collabdocs-dotnet-api
+    runtime: docker
+    dockerfilePath: dotnet/src/CollabDocs.API/Dockerfile
+    dockerContext: dotnet
+    plan: free
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: ASPNETCORE_URLS
+        value: http://+:10000
+      - key: ConnectionStrings__Default
+        fromDatabase:
+          name: collabdocs-db
+          property: connectionString
+      - key: Jwt__Secret
+        sync: false
+      - key: AllowedOrigins__0
+        value: https://collabdocs-app.vercel.app
+    healthCheckPath: /api/health
+
+databases:
+  - name: collabdocs-db
+    plan: free
+    databaseName: collabdocs
+    user: collabdocs

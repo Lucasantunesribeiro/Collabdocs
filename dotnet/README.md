@@ -20,14 +20,41 @@ CollabDocs.Tests.Unit      ← xUnit + Moq + FluentAssertions
 
 - **ASP.NET Core 8** — Web API with minimal setup
 - **MediatR 12** — CQRS pattern (commands + queries + handlers)
-- **Entity Framework Core 8** — ORM with SQLite (swap connection string for SQL Server/PostgreSQL)
+- **Entity Framework Core 8** — ORM with PostgreSQL (Npgsql)
 - **JWT Bearer Auth** — HS256 token verification (same secret as the Next.js frontend)
 - **Swagger/OpenAPI** — auto-generated docs at `/swagger`
 - **xUnit + Moq + FluentAssertions** — unit tests
 
+## Database Setup (PostgreSQL)
+
+### Local with Docker
+
+```bash
+docker compose up postgres -d
+dotnet run --project src/CollabDocs.API
+```
+
+### Apply Migrations
+
+```bash
+cd dotnet
+dotnet ef database update --project src/CollabDocs.Infrastructure --startup-project src/CollabDocs.API
+```
+
+### Deploy on Render.com
+
+1. Fork/push the repo to GitHub
+2. Go to render.com -> New -> Blueprint
+3. Select the repo — it will read `render.yaml` automatically
+4. Set `Jwt__Secret` environment variable in the Render dashboard
+5. Deploy
+
 ## Running Locally
 
 ```bash
+# Start PostgreSQL first
+docker compose up postgres -d
+
 cd dotnet
 dotnet restore
 dotnet run --project src/CollabDocs.API
@@ -40,12 +67,14 @@ dotnet run --project src/CollabDocs.API
 | Variable | Description |
 |----------|-------------|
 | `Jwt__Secret` | HS256 signing secret (must match NEXTAUTH_SECRET in the Next.js app) |
-| `ConnectionStrings__Default` | SQLite path or SQL Server connection string |
+| `ConnectionStrings__Default` | PostgreSQL connection string |
 | `AllowedOrigins__0` | CORS origin (e.g. `http://localhost:3000`) |
 
 Override via environment:
 ```bash
-Jwt__Secret=your-secret dotnet run --project src/CollabDocs.API
+ConnectionStrings__Default="Host=localhost;Database=collabdocs;Username=postgres;Password=postgres" \
+  Jwt__Secret=your-secret \
+  dotnet run --project src/CollabDocs.API
 ```
 
 ## Running Tests
