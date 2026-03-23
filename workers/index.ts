@@ -1,5 +1,7 @@
 import router from './api/router';
 
+export { DocumentSession } from './collaboration/DocumentSession';
+
 export interface Env {
   DB: D1Database;
   NEXTAUTH_SECRET: string;
@@ -13,6 +15,8 @@ export interface Env {
    * Falls back to http://localhost:3000 if empty or not set.
    */
   ALLOWED_ORIGINS: string;
+  /** Durable Object namespace for real-time collaboration sessions. */
+  COLLAB_SESSIONS: DurableObjectNamespace;
 }
 
 export default {

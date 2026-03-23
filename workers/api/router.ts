@@ -141,6 +141,45 @@ export default {
       return timed(Promise.resolve(methodNotAllowed(request, env)));
     }
 
+    // /api/documents/:id/ws — WebSocket upgrade for real-time collaboration
+    const wsMatch = path.match(/^\/api\/documents\/([^/]+)\/ws$/);
+    if (wsMatch && method === 'GET') {
+      const documentId = wsMatch[1];
+      if (!isValidUUID(documentId)) {
+        return timed(
+          Promise.resolve(
+            corsResponse(
+              400,
+              JSON.stringify({ error: 'Invalid document ID format' }),
+              request,
+              env.ALLOWED_ORIGINS ?? '',
+              { 'Content-Type': 'application/json' }
+            )
+          )
+        );
+      }
+
+      const upgradeHeader = request.headers.get('Upgrade');
+      if (upgradeHeader !== 'websocket') {
+        return timed(
+          Promise.resolve(
+            corsResponse(
+              426,
+              JSON.stringify({ error: 'Expected WebSocket upgrade' }),
+              request,
+              env.ALLOWED_ORIGINS ?? '',
+              { 'Content-Type': 'application/json' }
+            )
+          )
+        );
+      }
+
+      // Route to the Durable Object for this document session
+      const id = env.COLLAB_SESSIONS.idFromName(documentId);
+      const session = env.COLLAB_SESSIONS.get(id);
+      return session.fetch(request);
+    }
+
     // /api/documents/:id
     const docMatch = path.match(/^\/api\/documents\/([^/]+)$/);
     if (docMatch) {
