@@ -1,4 +1,6 @@
 import router from './api/router';
+import type { EmailNotificationMessage } from './queues/emailConsumer';
+import { processEmailQueue } from './queues/emailConsumer';
 
 export { DocumentSession } from './collaboration/DocumentSession';
 
@@ -17,8 +19,11 @@ export interface Env {
   ALLOWED_ORIGINS: string;
   /** Durable Object namespace for real-time collaboration sessions. */
   COLLAB_SESSIONS: DurableObjectNamespace;
+  /** Cloudflare Queue for email notifications. */
+  NOTIFICATION_QUEUE: Queue<EmailNotificationMessage>;
 }
 
 export default {
   fetch: router.fetch,
+  queue: processEmailQueue,
 };

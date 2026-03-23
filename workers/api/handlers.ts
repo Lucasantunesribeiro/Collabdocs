@@ -253,7 +253,7 @@ export async function handleAddCollaborator(
   }
 
   try {
-    await addCollaborator(env.DB, user, id, email, permission);
+    await addCollaborator(env.DB, user, id, email, permission, env.NOTIFICATION_QUEUE);
     return json({ message: 'Collaborator added', documentId: id, email, permission }, 200, req, env);
   } catch (err) {
     const status = getStatusFromError(err);

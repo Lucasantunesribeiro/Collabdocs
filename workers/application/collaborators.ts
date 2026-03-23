@@ -1,4 +1,5 @@
 import type { AuthenticatedUser } from '../domain/types';
+import type { EmailNotificationMessage } from '../queues/emailConsumer';
 import {
   findDocumentById,
   findCollaborators,
@@ -97,7 +98,8 @@ export async function addCollaborator(
   user: AuthenticatedUser,
   documentId: string,
   email: string,
-  permission: string
+  permission: string,
+  notificationQueue?: Queue<EmailNotificationMessage>
 ): Promise<void> {
   const doc = await findDocumentById(db, documentId);
 
@@ -130,6 +132,22 @@ export async function addCollaborator(
   logger.info('Collaborator added', { documentId, userId: user.id, email, permission });
 
   await logAuditEvent(db, documentId, user.id, 'collaborator_added', { email });
+
+  if (notificationQueue) {
+    try {
+      await notificationQueue.send({
+        type: 'collaborator_added',
+        toEmail: email,
+        toName: email.split('@')[0],
+        documentTitle: doc.title,
+        documentId,
+        addedByName: user.name,
+        permission,
+      });
+    } catch (err) {
+      logger.warn('Failed to enqueue email notification', { email, documentId });
+    }
+  }
 }
 
 export async function removeCollaborator(
