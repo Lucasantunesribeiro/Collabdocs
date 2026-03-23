@@ -11,6 +11,7 @@ import {
   handleAddCollaborator,
   handleRemoveCollaborator,
   handleHealthCheck,
+  logRequest,
 } from './handlers';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -54,10 +55,20 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method;
+    const startMs = Date.now();
+
+    // Helper that emits the request log after every handler resolves
+    async function timed(handlerPromise: Promise<Response>): Promise<Response> {
+      const response = await handlerPromise;
+      logRequest(method, path, response.status, Date.now() - startMs);
+      return response;
+    }
 
     // CORS preflight — always allow, even before rate limit
     if (method === 'OPTIONS') {
-      return corsResponse(204, null, request, env.ALLOWED_ORIGINS ?? '');
+      const res = corsResponse(204, null, request, env.ALLOWED_ORIGINS ?? '');
+      logRequest(method, path, res.status, Date.now() - startMs);
+      return res;
     }
 
     // Rate limiting on public API paths (fail-open)
@@ -65,7 +76,7 @@ export default {
       try {
         const allowed = await checkRateLimit(env.DB, request);
         if (!allowed) {
-          return rateLimitExceeded(request, env);
+          return timed(Promise.resolve(rateLimitExceeded(request, env)));
         }
       } catch {
         // Fail-open: DB unavailable
@@ -74,7 +85,7 @@ export default {
 
     // Root path
     if (path === '/') {
-      return corsResponse(
+      const res = corsResponse(
         200,
         JSON.stringify({
           app: 'CollabDocs API',
@@ -91,18 +102,20 @@ export default {
         env.ALLOWED_ORIGINS ?? '',
         { 'Content-Type': 'application/json' }
       );
+      logRequest(method, path, res.status, Date.now() - startMs);
+      return res;
     }
 
     // /api/health
     if (path === '/api/health' && method === 'GET') {
-      return handleHealthCheck(request, env);
+      return timed(handleHealthCheck(request, env));
     }
 
     // /api/documents
     if (path === '/api/documents') {
-      if (method === 'GET') return handleListDocuments(request, env);
-      if (method === 'POST') return handleCreateDocument(request, env);
-      return methodNotAllowed(request, env);
+      if (method === 'GET') return timed(handleListDocuments(request, env));
+      if (method === 'POST') return timed(handleCreateDocument(request, env));
+      return timed(Promise.resolve(methodNotAllowed(request, env)));
     }
 
     // /api/documents/:id/collaborators
@@ -110,18 +123,22 @@ export default {
     if (collabMatch) {
       const id = collabMatch[1];
       if (!isValidUUID(id)) {
-        return corsResponse(
-          400,
-          JSON.stringify({ error: 'Invalid document ID format' }),
-          request,
-          env.ALLOWED_ORIGINS ?? '',
-          { 'Content-Type': 'application/json' }
+        return timed(
+          Promise.resolve(
+            corsResponse(
+              400,
+              JSON.stringify({ error: 'Invalid document ID format' }),
+              request,
+              env.ALLOWED_ORIGINS ?? '',
+              { 'Content-Type': 'application/json' }
+            )
+          )
         );
       }
-      if (method === 'GET') return handleGetCollaborators(request, env, id);
-      if (method === 'POST') return handleAddCollaborator(request, env, id);
-      if (method === 'DELETE') return handleRemoveCollaborator(request, env, id);
-      return methodNotAllowed(request, env);
+      if (method === 'GET') return timed(handleGetCollaborators(request, env, id));
+      if (method === 'POST') return timed(handleAddCollaborator(request, env, id));
+      if (method === 'DELETE') return timed(handleRemoveCollaborator(request, env, id));
+      return timed(Promise.resolve(methodNotAllowed(request, env)));
     }
 
     // /api/documents/:id
@@ -129,20 +146,24 @@ export default {
     if (docMatch) {
       const id = docMatch[1];
       if (!isValidUUID(id)) {
-        return corsResponse(
-          400,
-          JSON.stringify({ error: 'Invalid document ID format' }),
-          request,
-          env.ALLOWED_ORIGINS ?? '',
-          { 'Content-Type': 'application/json' }
+        return timed(
+          Promise.resolve(
+            corsResponse(
+              400,
+              JSON.stringify({ error: 'Invalid document ID format' }),
+              request,
+              env.ALLOWED_ORIGINS ?? '',
+              { 'Content-Type': 'application/json' }
+            )
+          )
         );
       }
-      if (method === 'GET') return handleGetDocument(request, env, id);
-      if (method === 'PUT') return handleUpdateDocument(request, env, id);
-      if (method === 'DELETE') return handleDeleteDocument(request, env, id);
-      return methodNotAllowed(request, env);
+      if (method === 'GET') return timed(handleGetDocument(request, env, id));
+      if (method === 'PUT') return timed(handleUpdateDocument(request, env, id));
+      if (method === 'DELETE') return timed(handleDeleteDocument(request, env, id));
+      return timed(Promise.resolve(methodNotAllowed(request, env)));
     }
 
-    return notFound(request, env);
+    return timed(Promise.resolve(notFound(request, env)));
   },
 };

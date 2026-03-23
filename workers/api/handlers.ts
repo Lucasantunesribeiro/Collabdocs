@@ -13,6 +13,7 @@ import {
   addCollaborator,
   removeCollaborator,
 } from '../application/collaborators';
+import { logger } from '../lib/logger';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -60,6 +61,19 @@ function getMessageFromError(err: unknown): string {
 }
 
 // ---------------------------------------------------------------------------
+// Request logger middleware — called from router after response is produced
+// ---------------------------------------------------------------------------
+
+export function logRequest(
+  method: string,
+  path: string,
+  status: number,
+  durationMs: number
+): void {
+  logger.info('http_request', { method, path, status, durationMs });
+}
+
+// ---------------------------------------------------------------------------
 // Document handlers
 // ---------------------------------------------------------------------------
 
@@ -76,7 +90,7 @@ export async function handleListDocuments(
   } catch (err) {
     const status = getStatusFromError(err);
     const message = getMessageFromError(err);
-    console.error('[handlers] listDocuments error:', message);
+    logger.error('listDocuments failed', err, { status });
     return errorResponse(message, status, req, env);
   }
 }
@@ -107,7 +121,7 @@ export async function handleCreateDocument(
   } catch (err) {
     const status = getStatusFromError(err);
     const message = getMessageFromError(err);
-    console.error('[handlers] createDocument error:', message);
+    logger.error('createDocument failed', err, { status });
     return errorResponse(message, status, req, env);
   }
 }
@@ -129,7 +143,7 @@ export async function handleGetDocument(
     if (status !== 500) {
       return errorResponse(message, status, req, env);
     }
-    console.error('[handlers] getDocument error:', message);
+    logger.error('getDocument failed', err, { documentId: id });
     return errorResponse('Failed to retrieve document', 500, req, env);
   }
 }
@@ -149,14 +163,14 @@ export async function handleUpdateDocument(
     return errorResponse('Invalid JSON body', 400, req, env);
   }
 
-  const { content, title } = body ?? {};
+  const { content, title, expectedVersion } = body ?? {};
 
   if (content === undefined && title === undefined) {
     return errorResponse('Provide at least one field to update: content or title', 400, req, env);
   }
 
   try {
-    const result = await updateDocument(env.DB, user, id, { content, title });
+    const result = await updateDocument(env.DB, user, id, { content, title, expectedVersion });
     return json({ ...result, message: 'Document updated' }, 200, req, env);
   } catch (err) {
     const status = getStatusFromError(err);
@@ -164,7 +178,7 @@ export async function handleUpdateDocument(
     if (status !== 500) {
       return errorResponse(message, status, req, env);
     }
-    console.error('[handlers] updateDocument error:', message);
+    logger.error('updateDocument failed', err, { documentId: id });
     return errorResponse('Failed to update document', 500, req, env);
   }
 }
@@ -186,7 +200,7 @@ export async function handleDeleteDocument(
     if (status !== 500) {
       return errorResponse(message, status, req, env);
     }
-    console.error('[handlers] deleteDocument error:', message);
+    logger.error('deleteDocument failed', err, { documentId: id });
     return errorResponse('Failed to delete document', 500, req, env);
   }
 }
@@ -212,7 +226,7 @@ export async function handleGetCollaborators(
     if (status !== 500) {
       return errorResponse(message, status, req, env);
     }
-    console.error('[handlers] getCollaborators error:', message);
+    logger.error('getCollaborators failed', err, { documentId: id });
     return errorResponse('Failed to retrieve collaborators', 500, req, env);
   }
 }
@@ -247,7 +261,7 @@ export async function handleAddCollaborator(
     if (status !== 500) {
       return errorResponse(message, status, req, env);
     }
-    console.error('[handlers] addCollaborator error:', message);
+    logger.error('addCollaborator failed', err, { documentId: id });
     return errorResponse('Failed to add collaborator', 500, req, env);
   }
 }
@@ -282,7 +296,7 @@ export async function handleRemoveCollaborator(
     if (status !== 500) {
       return errorResponse(message, status, req, env);
     }
-    console.error('[handlers] removeCollaborator error:', message);
+    logger.error('removeCollaborator failed', err, { documentId: id });
     return errorResponse('Failed to remove collaborator', 500, req, env);
   }
 }
@@ -295,11 +309,28 @@ export async function handleHealthCheck(
   req: Request,
   env: Env
 ): Promise<Response> {
+  const timestamp = new Date().toISOString();
+  let dbStatus: { status: 'ok' | 'error'; message?: string };
+
+  try {
+    await env.DB.prepare('SELECT 1').first();
+    dbStatus = { status: 'ok' };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.warn('Health check: database unreachable', { error: message });
+    dbStatus = { status: 'error', message };
+  }
+
+  const overallStatus = dbStatus.status === 'ok' ? 'healthy' : 'degraded';
+
   return json(
     {
-      status: 'healthy',
-      timestamp: new Date().toISOString(),
+      status: overallStatus,
+      timestamp,
       version: '2.0.0',
+      checks: {
+        database: dbStatus,
+      },
     },
     200,
     req,
