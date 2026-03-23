@@ -46,3 +46,21 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm audit --audit-level=high
+
+  dotnet-test:
+    name: .NET Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore
+        run: dotnet restore
+        working-directory: dotnet
+      - name: Build
+        run: dotnet build --no-restore
+        working-directory: dotnet
+      - name: Test
+        run: dotnet test --no-build --verbosity normal
+        working-directory: dotnet
