@@ -170,32 +170,33 @@ class SecureApiService {
   }
 
   // ---------------------------------------------------------------------------
-  // Collaborator management — routed to Worker (Real-Time Collaboration Context)
-  // These will be migrated to the .NET API in a future PR once the
-  // CollabDocs.API/Controllers gains a CollaboratorsController.
+  // Collaborator management — routed to .NET API (Document Management Context)
+  // Permission mapping: frontend "read"/"write"/"owner" ↔ .NET Viewer/Editor/Owner
   // ---------------------------------------------------------------------------
 
   async addCollaborator(documentId: string, email: string, session: NextAuthSession, permission: 'read' | 'write' = 'read'): Promise<{ message: string }> {
-    return this.authenticatedRequest<{ message: string }>(
-      this.workerUrl, `/documents/${documentId}/collaborators`, session, {
+    await this.authenticatedRequest<{ collaborator: Collaborator }>(
+      this.dotnetApiUrl, `/documents/${documentId}/collaborators`, session, {
         method: 'POST',
         body: JSON.stringify({ email, permission }),
       }
     )
+    return { message: 'Collaborator added successfully' }
   }
 
   async removeCollaborator(documentId: string, email: string, session: NextAuthSession): Promise<{ message: string }> {
-    return this.authenticatedRequest<{ message: string }>(
-      this.workerUrl, `/documents/${documentId}/collaborators`, session, {
+    await this.authenticatedRequest<Record<string, never>>(
+      this.dotnetApiUrl, `/documents/${documentId}/collaborators`, session, {
         method: 'DELETE',
         body: JSON.stringify({ email }),
       }
     )
+    return { message: 'Collaborator removed successfully' }
   }
 
   async getDocumentCollaborators(documentId: string, session: NextAuthSession): Promise<{ collaborators: Collaborator[]; total: number }> {
     return this.authenticatedRequest<{ collaborators: Collaborator[]; total: number }>(
-      this.workerUrl, `/documents/${documentId}/collaborators`, session
+      this.dotnetApiUrl, `/documents/${documentId}/collaborators`, session
     )
   }
 }
