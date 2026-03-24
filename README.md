@@ -1,6 +1,6 @@
 # CollabDocs
 
-Plataforma de documentos colaborativos com edição em tempo real, construída sobre Cloudflare Workers (TypeScript) e ASP.NET Core 8 (C#).
+Plataforma de documentos colaborativos com edição em tempo real, construída sobre Cloudflare Workers (TypeScript) e ASP.NET Core 9 (C#).
 
 ## Links de Produção
 
@@ -23,13 +23,15 @@ Plataforma de documentos colaborativos com edição em tempo real, construída s
 - **Auth**: JWT Bearer (HS256) verificado com Web Crypto API nativa
 - **Observabilidade**: Cloudflare Logpush + structured JSON logging (NDJSON)
 
-### ASP.NET Core 8 (C# / .NET)
+### ASP.NET Core 9 (C# / .NET)
 - **Arquitetura**: Clean Architecture (Domain → Application → Infrastructure → API)
 - **CQRS**: MediatR 12 — commands/queries/handlers isolados
-- **ORM**: Entity Framework Core 8 + Npgsql (PostgreSQL)
+- **ORM**: Entity Framework Core 9 + Npgsql (PostgreSQL)
+- **Mensageria**: RabbitMQ (topic exchange) + Transactional Outbox Pattern com idempotência
+- **Cache**: Redis cache-aside (`docs:user:{userId}`, TTL 5 min) com fallback `NullDocumentCacheService`
 - **Auth**: JWT Bearer HS256 (mesmo secret do Worker)
 - **Observabilidade**: OpenTelemetry (OTLP) — tracing distribuído compatível com Honeycomb.io
-- **Testes**: xUnit + Moq + FluentAssertions (10 testes unitários)
+- **Testes**: xUnit + Moq + FluentAssertions — 13 testes unitários + 8 testes de integração (TestContainers PostgreSQL)
 
 ### Frontend (Next.js / Vercel)
 - **Framework**: Next.js 14 App Router
@@ -57,7 +59,7 @@ infrastructure/  — D1 SQL queries (pure functions)
 ### Pré-requisitos
 - Node.js 20+
 - Docker + Docker Compose
-- .NET 8 SDK (para o backend C#)
+- .NET 9 SDK (para o backend C#)
 
 ### Worker + Frontend
 ```bash
@@ -68,7 +70,7 @@ wrangler dev         # Worker local (localhost:8787)
 
 ### Stack completa com Docker
 ```bash
-docker-compose up    # PostgreSQL + .NET API + Next.js
+docker-compose up    # PostgreSQL + RabbitMQ + Redis + .NET API + Worker + Next.js
 ```
 
 ### .NET API isolada
@@ -90,7 +92,7 @@ wrangler d1 execute COLLAB_DOCS_DB --local --file migrations/0001_init.sql
 # Unit tests (Worker TypeScript) — 41 testes
 npx vitest run tests/unit/
 
-# xUnit (.NET) — 10 testes
+# xUnit (.NET) — 13 unit + 8 integração (TestContainers)
 cd dotnet && dotnet test
 
 # E2E (Playwright)
@@ -104,10 +106,11 @@ GitHub Actions (`main` branch):
 | Job | O que faz |
 |---|---|
 | `quality` | TypeScript typecheck + Next.js build |
+| `typecheck-workers` | TypeScript typecheck do Cloudflare Worker |
 | `test` | Vitest unit tests |
 | `e2e` | Playwright E2E |
 | `security` | npm audit |
-| `dotnet-test` | dotnet build + xUnit |
+| `dotnet-test` | dotnet build + xUnit (unit + integração com TestContainers) |
 
 ## Deploy
 
@@ -123,6 +126,16 @@ O arquivo `render.yaml` define o Blueprint. No dashboard do Render:
 2. As variáveis `ConnectionStrings__Default` (auto via banco gerenciado) e `Jwt__Secret` serão criadas
 3. Para OpenTelemetry (Honeycomb): definir `OTEL_EXPORTER_OTLP_ENDPOINT` e `OTEL_EXPORTER_OTLP_HEADERS`
 
+### .NET API (AWS ECS Fargate)
+O diretório `aws/` contém a infraestrutura como código:
+```bash
+# Provisionar infraestrutura (ECS, RDS, ElastiCache, Amazon MQ, ALB)
+aws cloudformation deploy --template-file aws/cloudformation.yml --stack-name collabdocs --capabilities CAPABILITY_IAM
+
+# Deploy via GitHub Actions (OIDC — sem credenciais de longa duração)
+# Ver .github/workflows/deploy.yml
+```
+
 ### Frontend (Vercel)
 Deploy automático via push para `main`. Variáveis necessárias:
 ```
@@ -133,6 +146,7 @@ GOOGLE_CLIENT_ID=<credencial Google>
 GOOGLE_CLIENT_SECRET=<secret Google>
 NEXT_PUBLIC_API_URL=https://collab-docs.collabdocs.workers.dev/api
 NEXT_PUBLIC_WS_URL=wss://collab-docs.collabdocs.workers.dev
+NEXT_PUBLIC_DOTNET_API_URL=https://<alb-dns>/api
 ```
 
 ## Variáveis de Ambiente do Worker

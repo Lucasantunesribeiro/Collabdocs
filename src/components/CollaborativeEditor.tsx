@@ -117,7 +117,7 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
   };
 
   const handleAutoSave = async () => {
-    if (!isDirty) return;
+    if (!isDirty || !session) return;
     
     setIsSaving(true);
     setSaveStatus('saving');
@@ -143,6 +143,7 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
   };
 
   const handleManualSave = async () => {
+    if (!session) return;
     setIsSaving(true);
     setSaveStatus('saving');
     
@@ -171,6 +172,7 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
 
   // Carregar colaboradores
   const loadCollaborators = async () => {
+    if (!session) return;
     try {
       setIsLoadingCollaborators(true);
       const response = await secureApiService.getDocumentCollaborators(documentId, session);
