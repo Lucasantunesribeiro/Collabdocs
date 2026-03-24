@@ -1,6 +1,16 @@
 // Secure API service using NextAuth session JWT
 import type { Document } from '../types/shared'
 
+export interface Collaborator {
+  id: string
+  document_id: string
+  user_id: string
+  user_email: string
+  permission: 'read' | 'write' | 'owner'
+  added_by: string
+  created_at: string
+}
+
 // Interface for NextAuth session
 interface NextAuthSession {
   user: {
@@ -119,8 +129,8 @@ class SecureApiService {
     })
   }
 
-  async getDocumentCollaborators(documentId: string, session: NextAuthSession): Promise<{ collaborators: any[]; total: number }> {
-    return this.authenticatedRequest<{ collaborators: any[]; total: number }>(`/documents/${documentId}/collaborators`, session)
+  async getDocumentCollaborators(documentId: string, session: NextAuthSession): Promise<{ collaborators: Collaborator[]; total: number }> {
+    return this.authenticatedRequest<{ collaborators: Collaborator[]; total: number }>(`/documents/${documentId}/collaborators`, session)
   }
 
   async deleteDocument(id: string, session: NextAuthSession): Promise<{ message: string }> {
