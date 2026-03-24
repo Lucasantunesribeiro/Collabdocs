@@ -1,5 +1,6 @@
 using CollabDocs.Application.Commands;
 using CollabDocs.Application.Handlers;
+using CollabDocs.Application.Interfaces;
 using CollabDocs.Domain.Entities;
 using CollabDocs.Domain.Enums;
 using CollabDocs.Domain.Interfaces;
@@ -16,9 +17,10 @@ public class CreateDocumentHandlerTests
     private readonly Mock<IUserRepository> _userRepo = new();
     private readonly Mock<IAuditService> _audit = new();
     private readonly Mock<IOutboxRepository> _outbox = new();
+    private readonly Mock<IDocumentCacheService> _cacheService = new();
 
     private CreateDocumentHandler CreateHandler() =>
-        new(_documentRepo.Object, _userRepo.Object, _audit.Object, _outbox.Object);
+        new(_documentRepo.Object, _userRepo.Object, _audit.Object, _outbox.Object, _cacheService.Object);
 
     [Fact]
     public async Task Handle_ValidCommand_ReturnsDocumentDto()

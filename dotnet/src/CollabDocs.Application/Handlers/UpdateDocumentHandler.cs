@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using CollabDocs.Application.Commands;
 using CollabDocs.Application.DTOs;
+using CollabDocs.Application.Interfaces;
 using CollabDocs.Domain.Events;
 using CollabDocs.Domain.Interfaces;
 using CollabDocs.Domain.Outbox;
@@ -13,7 +14,8 @@ public class UpdateDocumentHandler(
     IDocumentRepository documentRepository,
     ICollaboratorRepository collaboratorRepository,
     IAuditService auditService,
-    IOutboxRepository outboxRepository
+    IOutboxRepository outboxRepository,
+    IDocumentCacheService cacheService
 ) : IRequestHandler<UpdateDocumentCommand, DocumentDto>
 {
     public async Task<DocumentDto> Handle(UpdateDocumentCommand request, CancellationToken cancellationToken)
@@ -53,6 +55,7 @@ public class UpdateDocumentHandler(
         await documentRepository.UpdateAsync(document, cancellationToken);
         await auditService.LogAsync(document.Id, request.UserId, "updated",
             new { fields = new[] { request.Content is not null ? "content" : null, request.Title is not null ? "title" : null }.Where(f => f != null) });
+        await cacheService.InvalidateUserAsync(request.UserId, cancellationToken);
 
         activity?.SetTag("document.version", document.Version);
         activity?.SetStatus(ActivityStatusCode.Ok);
