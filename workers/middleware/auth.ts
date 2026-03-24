@@ -20,6 +20,28 @@ export async function verifyToken(
     return null;
   }
 
+  return verifyTokenString(token, secret);
+}
+
+/**
+ * Verifies a NextAuth JWT passed as a query parameter.
+ * Used for WebSocket upgrades where browsers cannot set Authorization headers.
+ */
+export async function verifyWebSocketToken(
+  request: Request,
+  secret: string
+): Promise<AuthenticatedUser | null> {
+  const url = new URL(request.url);
+  const token = url.searchParams.get('token');
+  if (!token) return null;
+  return verifyTokenString(token, secret);
+}
+
+async function verifyTokenString(
+  token: string,
+  secret: string
+): Promise<AuthenticatedUser | null> {
+
   try {
     const payload = await verifyJWT(token, secret);
     if (!payload) return null;

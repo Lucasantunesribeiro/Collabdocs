@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { secureApiService } from '@/lib/secure-api';
+import { secureApiService, type Collaborator } from '@/lib/secure-api';
 import { Button } from './ui/Button';
 import { Card, CardContent } from './ui/Card';
 import { Alert } from './ui/Alert';
@@ -26,19 +26,24 @@ import {
 interface CollaborativeEditorProps {
   documentId: string;
   initialContent: string;
-  session: any; // Sessão NextAuth
+  session: {
+    user: { id: string; name: string; email: string; image?: string };
+    sessionToken?: string;
+  };
 }
 
-function useCollaboration(documentId: string, userId: string, userName: string) {
+function useCollaboration(documentId: string, token: string) {
   const [connectedUsers, setConnectedUsers] = useState<{ userId: string; userName: string }[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    if (!documentId || documentId === 'demo') return;
+    if (!documentId || documentId === 'demo' || !token) return;
 
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'wss://collab-docs.collabdocs.workers.dev';
+    // Pass JWT as ?token= because browsers cannot set custom headers on WS upgrades.
+    // The Worker router verifies the token and injects server-trusted identity params.
     const ws = new WebSocket(
-      `${wsUrl}/api/documents/${documentId}/ws?userId=${userId}&userName=${encodeURIComponent(userName)}`
+      `${wsUrl}/api/documents/${documentId}/ws?token=${encodeURIComponent(token)}`
     );
 
     ws.onmessage = (event) => {
@@ -60,13 +65,13 @@ function useCollaboration(documentId: string, userId: string, userName: string) 
     wsRef.current = ws;
 
     return () => ws.close();
-  }, [documentId, userId, userName]);
+  }, [documentId, token]);
 
   const broadcast = useCallback((content: string) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'update', userId, userName, documentId, content }));
+      wsRef.current.send(JSON.stringify({ type: 'update', documentId, content }));
     }
-  }, [documentId, userId, userName]);
+  }, [documentId]);
 
   return { connectedUsers, broadcast };
 }
@@ -78,14 +83,13 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
   const [lastSaved, setLastSaved] = useState<Date>(new Date());
   const [isDirty, setIsDirty] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
-  const [collaborators, setCollaborators] = useState<any[]>([]);
+  const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
   const [isLoadingCollaborators, setIsLoadingCollaborators] = useState(true);
 
-  // Real-time collaboration via WebSocket
+  // Real-time collaboration via WebSocket (JWT passed as ?token= query param)
   const { connectedUsers, broadcast } = useCollaboration(
     documentId,
-    session?.user?.id || 'anonymous',
-    session?.user?.name || 'User'
+    session?.sessionToken || ''
   );
 
   // Salvamento automático
@@ -173,17 +177,15 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
       setCollaborators(response.collaborators || []);
     } catch (error) {
       console.error('Erro ao carregar colaboradores:', error);
-      // Fallback: criar colaborador básico para o usuário atual
+      // Fallback: minimal collaborator entry for the current user
       setCollaborators([{
         id: `user-${session.user.id}`,
-        name: session.user.name || 'Você',
-        email: session.user.email,
+        document_id: documentId,
+        user_id: session.user.id,
+        user_email: session.user.email,
         permission: 'owner',
-        avatar_url: session.user.image,
-        is_current_user: true,
-        is_owner: true,
-        can_edit: true,
-        status: 'editando'
+        added_by: session.user.id,
+        created_at: new Date().toISOString(),
       }]);
     } finally {
       setIsLoadingCollaborators(false);
@@ -363,49 +365,31 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
                       <p className="text-sm text-text-500">Carregando colaboradores...</p>
                     </div>
                   ) : (
-                    collaborators.map((collaborator) => (
-                      <div key={collaborator.id} className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                          collaborator.is_current_user 
-                            ? 'bg-primary-100' 
-                            : collaborator.is_owner 
-                              ? 'bg-warning-100' 
-                              : 'bg-success-100'
-                        }`}>
-                          {collaborator.avatar_url ? (
-                            <img 
-                              src={collaborator.avatar_url} 
-                              alt={collaborator.name}
-                              className="w-8 h-8 rounded-full object-cover"
-                            />
-                          ) : (
+                    collaborators.map((collaborator) => {
+                      const isCurrentUser = collaborator.user_id === session.user.id || collaborator.user_email === session.user.email;
+                      const isOwner = collaborator.permission === 'owner';
+                      return (
+                        <div key={collaborator.id} className="flex items-center gap-3">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                            isCurrentUser ? 'bg-primary-100' : isOwner ? 'bg-warning-100' : 'bg-success-100'
+                          }`}>
                             <span className={`text-sm font-medium ${
-                              collaborator.is_current_user 
-                                ? 'text-primary-600' 
-                                : collaborator.is_owner 
-                                  ? 'text-warning-600' 
-                                  : 'text-success-600'
+                              isCurrentUser ? 'text-primary-600' : isOwner ? 'text-warning-600' : 'text-success-600'
                             }`}>
-                              {collaborator.name.charAt(0).toUpperCase()}
+                              {collaborator.user_email.charAt(0).toUpperCase()}
                             </span>
-                          )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-text-900 truncate">
+                              {collaborator.user_email}
+                              {isCurrentUser && <span className="ml-2 text-xs text-primary-600">(Você)</span>}
+                              {isOwner && <span className="ml-2 text-xs text-warning-600">(Proprietário)</span>}
+                            </p>
+                            <p className="text-xs text-text-500 capitalize">{collaborator.permission}</p>
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-text-900">
-                            {collaborator.name}
-                            {collaborator.is_current_user && (
-                              <span className="ml-2 text-xs text-primary-600">(Você)</span>
-                            )}
-                            {collaborator.is_owner && (
-                              <span className="ml-2 text-xs text-warning-600">(Proprietário)</span>
-                            )}
-                          </p>
-                          <p className="text-xs text-text-500 capitalize">
-                            {collaborator.status}
-                          </p>
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </CardContent>
