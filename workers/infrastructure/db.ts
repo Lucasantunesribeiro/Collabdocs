@@ -135,7 +135,7 @@ export async function updateDocumentRecord(
     }
 
     // D1 returns changes === 0 when the version predicate did not match
-    if (result.changes === 0) {
+    if (result.meta.changes === 0) {
       const conflictErr = new Error('Document was modified by another user');
       (conflictErr as any).status = 409;
       throw conflictErr;
@@ -172,7 +172,7 @@ export async function deleteDocumentRecord(
     .bind(id)
     .run();
 
-  if (result.changes === 0) {
+  if (result.meta.changes === 0) {
     throw new Error('Document not found or already deleted');
   }
 }
@@ -260,7 +260,7 @@ export async function removeCollaboratorRecord(
     .bind(documentId, email)
     .run();
 
-  if (result.changes === 0) {
+  if (result.meta.changes === 0) {
     throw new Error('Collaborator not found');
   }
 }
