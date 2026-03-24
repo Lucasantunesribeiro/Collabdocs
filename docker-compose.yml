@@ -7,6 +7,9 @@ services:
     environment:
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
       - NEXTAUTH_URL=http://localhost:3000
+      # .NET API — Document Management Context (CRUD, business rules, audit logging)
+      - NEXT_PUBLIC_DOTNET_API_URL=http://localhost:5000/api
+      # Cloudflare Worker — Real-Time Collaboration Context (WebSocket, presence)
       - NEXT_PUBLIC_API_URL=http://localhost:8787/api
       - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
       - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
@@ -14,6 +17,7 @@ services:
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
     depends_on:
       - worker
+      - dotnet-api
 
   worker:
     image: node:20-alpine

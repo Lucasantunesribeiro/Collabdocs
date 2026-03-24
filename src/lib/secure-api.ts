@@ -21,7 +21,7 @@ interface NextAuthSession {
     image?: string
   }
   accessToken?: string
-  /** Raw NextAuth session JWT — used as Bearer token for the Worker API */
+  /** Raw NextAuth session JWT — used as Bearer token for both the .NET API and Worker */
   sessionToken?: string
 }
 
@@ -36,16 +36,40 @@ export interface UpdateDocumentRequest {
   title?: string
 }
 
+/**
+ * Resolves the .NET API base URL.
+ *
+ * Priority:
+ *  1. NEXT_PUBLIC_DOTNET_API_URL — explicit override (Vercel / Docker)
+ *  2. http://localhost:5000/api   — local development default
+ */
+function resolveDotnetApiUrl(): string {
+  if (process.env.NEXT_PUBLIC_DOTNET_API_URL) {
+    return process.env.NEXT_PUBLIC_DOTNET_API_URL
+  }
+  return 'http://localhost:5000/api'
+}
+
 class SecureApiService {
-  private baseUrl: string
+  /** Base URL for document CRUD — .NET API (Document Management Context) */
+  private dotnetApiUrl: string
+
+  /**
+   * Base URL for Worker API — used for collaborator management and WebSocket.
+   * WebSocket connections use NEXT_PUBLIC_WS_URL directly in CollaborativeEditor.
+   * (Real-Time Collaboration Context)
+   */
+  readonly workerUrl: string
 
   constructor() {
+    this.dotnetApiUrl = resolveDotnetApiUrl()
+
     if (typeof window !== 'undefined' && window.location.hostname.includes('vercel.app')) {
-      this.baseUrl = 'https://collab-docs.collabdocs.workers.dev/api'
+      this.workerUrl = 'https://collab-docs.collabdocs.workers.dev/api'
     } else if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-      this.baseUrl = 'http://localhost:8787/api'
+      this.workerUrl = 'http://localhost:8787/api'
     } else {
-      this.baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://collab-docs.collabdocs.workers.dev/api'
+      this.workerUrl = process.env.NEXT_PUBLIC_API_URL || 'https://collab-docs.collabdocs.workers.dev/api'
     }
   }
 
@@ -55,6 +79,7 @@ class SecureApiService {
   }
 
   private async authenticatedRequest<T>(
+    baseUrl: string,
     endpoint: string,
     session: NextAuthSession,
     options: RequestInit = {}
@@ -72,7 +97,7 @@ class SecureApiService {
       throw new Error('No authentication token available')
     }
 
-    const url = `${this.baseUrl}${endpoint}`
+    const url = `${baseUrl}${endpoint}`
 
     const config: RequestInit = {
       headers: {
@@ -87,56 +112,91 @@ class SecureApiService {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.error || `HTTP error! status: ${response.status}`)
+      throw new Error(errorData.error || errorData.title || `HTTP error! status: ${response.status}`)
+    }
+
+    // DELETE returns 204 No Content — return empty object to satisfy generic T
+    if (response.status === 204) {
+      return {} as T
     }
 
     return response.json()
   }
 
+  // ---------------------------------------------------------------------------
+  // Document CRUD — routed to .NET API (Document Management Context)
+  // ---------------------------------------------------------------------------
+
   async getDocuments(session: NextAuthSession): Promise<{ documents: Document[] }> {
-    return this.authenticatedRequest<{ documents: Document[] }>('/documents', session)
+    const result = await this.authenticatedRequest<{ documents: Document[]; count: number }>(
+      this.dotnetApiUrl, '/documents', session
+    )
+    return { documents: result.documents }
   }
 
   async getDocument(id: string, session: NextAuthSession): Promise<{ document: Document; permission: string }> {
-    return this.authenticatedRequest<{ document: Document; permission: string }>(`/documents/${id}`, session)
+    const result = await this.authenticatedRequest<{ document: Document }>(
+      this.dotnetApiUrl, `/documents/${id}`, session
+    )
+    return { document: result.document, permission: 'owner' }
   }
 
   async createDocument(data: CreateDocumentRequest, session: NextAuthSession): Promise<{ document: Document }> {
-    return this.authenticatedRequest<{ document: Document }>('/documents', session, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    })
+    return this.authenticatedRequest<{ document: Document }>(
+      this.dotnetApiUrl, '/documents', session, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    )
   }
 
   async updateDocument(id: string, data: UpdateDocumentRequest, session: NextAuthSession): Promise<{ document: Document; message: string }> {
-    return this.authenticatedRequest<{ document: Document; message: string }>(`/documents/${id}`, session, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    })
-  }
-
-  async addCollaborator(documentId: string, email: string, session: NextAuthSession, permission: 'read' | 'write' = 'read'): Promise<{ message: string }> {
-    return this.authenticatedRequest<{ message: string }>(`/documents/${documentId}/collaborators`, session, {
-      method: 'POST',
-      body: JSON.stringify({ email, permission }),
-    })
-  }
-
-  async removeCollaborator(documentId: string, email: string, session: NextAuthSession): Promise<{ message: string }> {
-    return this.authenticatedRequest<{ message: string }>(`/documents/${documentId}/collaborators`, session, {
-      method: 'DELETE',
-      body: JSON.stringify({ email }),
-    })
-  }
-
-  async getDocumentCollaborators(documentId: string, session: NextAuthSession): Promise<{ collaborators: Collaborator[]; total: number }> {
-    return this.authenticatedRequest<{ collaborators: Collaborator[]; total: number }>(`/documents/${documentId}/collaborators`, session)
+    const result = await this.authenticatedRequest<{ document: Document }>(
+      this.dotnetApiUrl, `/documents/${id}`, session, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }
+    )
+    return { document: result.document, message: 'Document updated successfully' }
   }
 
   async deleteDocument(id: string, session: NextAuthSession): Promise<{ message: string }> {
-    return this.authenticatedRequest<{ message: string }>(`/documents/${id}`, session, {
-      method: 'DELETE',
-    })
+    await this.authenticatedRequest<Record<string, never>>(
+      this.dotnetApiUrl, `/documents/${id}`, session, {
+        method: 'DELETE',
+      }
+    )
+    return { message: 'Document deleted successfully' }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Collaborator management — routed to Worker (Real-Time Collaboration Context)
+  // These will be migrated to the .NET API in a future PR once the
+  // CollabDocs.API/Controllers gains a CollaboratorsController.
+  // ---------------------------------------------------------------------------
+
+  async addCollaborator(documentId: string, email: string, session: NextAuthSession, permission: 'read' | 'write' = 'read'): Promise<{ message: string }> {
+    return this.authenticatedRequest<{ message: string }>(
+      this.workerUrl, `/documents/${documentId}/collaborators`, session, {
+        method: 'POST',
+        body: JSON.stringify({ email, permission }),
+      }
+    )
+  }
+
+  async removeCollaborator(documentId: string, email: string, session: NextAuthSession): Promise<{ message: string }> {
+    return this.authenticatedRequest<{ message: string }>(
+      this.workerUrl, `/documents/${documentId}/collaborators`, session, {
+        method: 'DELETE',
+        body: JSON.stringify({ email }),
+      }
+    )
+  }
+
+  async getDocumentCollaborators(documentId: string, session: NextAuthSession): Promise<{ collaborators: Collaborator[]; total: number }> {
+    return this.authenticatedRequest<{ collaborators: Collaborator[]; total: number }>(
+      this.workerUrl, `/documents/${documentId}/collaborators`, session
+    )
   }
 }
 
