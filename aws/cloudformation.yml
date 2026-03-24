@@ -1,0 +1,910 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  CollabDocs API — AWS infrastructure stack.
+  Provisions VPC, RDS PostgreSQL, Amazon MQ (RabbitMQ), ElastiCache Redis,
+  SQS FIFO queue, ECR, ECS Fargate cluster with ALB, CloudWatch log group,
+  and IAM roles.
+  Deploy with:
+    aws cloudformation deploy \
+      --template-file aws/cloudformation.yml \
+      --stack-name collabdocs \
+      --capabilities CAPABILITY_NAMED_IAM \
+      --parameter-overrides \
+          DBPassword=<secret> \
+          MQPassword=<secret> \
+          JwtSecret=<secret>
+
+# ─── Parameters ────────────────────────────────────────────────────────────────
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues: [production, staging]
+    Description: Deployment environment
+
+  DBPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 16
+    Description: RDS PostgreSQL master password (min 16 chars)
+
+  MQPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 12
+    Description: Amazon MQ RabbitMQ admin password
+
+  JwtSecret:
+    Type: String
+    NoEcho: true
+    MinLength: 32
+    Description: JWT signing secret shared with Next.js (min 32 chars)
+
+  ApiImageTag:
+    Type: String
+    Default: latest
+    Description: ECR image tag to deploy (overridden by CI/CD)
+
+  DesiredCount:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 10
+    Description: Number of ECS tasks to run
+
+  DBInstanceClass:
+    Type: String
+    Default: db.t3.micro
+    AllowedValues: [db.t3.micro, db.t3.small, db.t3.medium]
+    Description: RDS instance size
+
+  AllowedFrontendOrigin:
+    Type: String
+    Default: "https://collabdocs-app.vercel.app"
+    Description: CORS allowed origin for the Vercel frontend
+
+# ─── Metadata ──────────────────────────────────────────────────────────────────
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label: { default: "Environment" }
+        Parameters: [Environment, ApiImageTag, DesiredCount]
+      - Label: { default: "Database (RDS PostgreSQL)" }
+        Parameters: [DBPassword, DBInstanceClass]
+      - Label: { default: "Message Broker (Amazon MQ)" }
+        Parameters: [MQPassword]
+      - Label: { default: "Application Secrets" }
+        Parameters: [JwtSecret, AllowedFrontendOrigin]
+
+# ─── Resources ─────────────────────────────────────────────────────────────────
+Resources:
+
+  # ── VPC ──────────────────────────────────────────────────────────────────────
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: "10.0.0.0/16"
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub "collabdocs-vpc-${Environment}"
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub "collabdocs-igw-${Environment}"
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # Public subnets (ALB, NAT gateways)
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: "10.0.1.0/24"
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: "collabdocs-public-a"
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: "10.0.2.0/24"
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: "collabdocs-public-b"
+
+  # Private subnets (ECS tasks, RDS, Amazon MQ)
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: "10.0.11.0/24"
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: "collabdocs-private-a"
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: "10.0.12.0/24"
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: "collabdocs-private-b"
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicRouteTable
+
+  # NAT Gateway (allows private subnets outbound internet for ECR pulls, Secrets Manager)
+  EIPNat:
+    Type: AWS::EC2::EIP
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      Domain: vpc
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt EIPNat.AllocationId
+      SubnetId: !Ref PublicSubnetA
+      Tags:
+        - Key: Name
+          Value: "collabdocs-nat"
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: "0.0.0.0/0"
+      NatGatewayId: !Ref NatGateway
+
+  PrivateSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetA
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetB
+      RouteTableId: !Ref PrivateRouteTable
+
+  # ── Security Groups ───────────────────────────────────────────────────────────
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Allow HTTP/HTTPS from internet to ALB"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: "0.0.0.0/0"
+      Tags:
+        - Key: Name
+          Value: "collabdocs-alb-sg"
+
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Allow traffic from ALB to ECS tasks on port 5000"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5000
+          ToPort: 5000
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+      Tags:
+        - Key: Name
+          Value: "collabdocs-ecs-sg"
+
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Allow PostgreSQL from ECS tasks only"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref ECSSecurityGroup
+      Tags:
+        - Key: Name
+          Value: "collabdocs-rds-sg"
+
+  MQSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Allow AMQP from ECS tasks only"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5671
+          ToPort: 5671
+          SourceSecurityGroupId: !Ref ECSSecurityGroup
+      Tags:
+        - Key: Name
+          Value: "collabdocs-mq-sg"
+
+  RedisSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Allow Redis from ECS tasks only"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          SourceSecurityGroupId: !Ref ECSSecurityGroup
+      Tags:
+        - Key: Name
+          Value: "collabdocs-redis-sg"
+
+  # ── ECR Repository ────────────────────────────────────────────────────────────
+  ECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: collabdocs-api
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Keep last 10 production images",
+                "selection": {
+                  "tagStatus": "tagged",
+                  "tagPrefixList": ["main-"],
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 10
+                },
+                "action": { "type": "expire" }
+              },
+              {
+                "rulePriority": 2,
+                "description": "Delete untagged images after 7 days",
+                "selection": {
+                  "tagStatus": "untagged",
+                  "countType": "sinceImagePushed",
+                  "countUnit": "days",
+                  "countNumber": 7
+                },
+                "action": { "type": "expire" }
+              }
+            ]
+          }
+      Tags:
+        - Key: Project
+          Value: CollabDocs
+
+  # ── RDS PostgreSQL ────────────────────────────────────────────────────────────
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: "CollabDocs RDS subnet group"
+      SubnetIds:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+
+  RDSInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      DBInstanceIdentifier: !Sub "collabdocs-db-${Environment}"
+      DBInstanceClass: !Ref DBInstanceClass
+      Engine: postgres
+      EngineVersion: "16.2"
+      MasterUsername: collabdocs
+      MasterUserPassword: !Ref DBPassword
+      DBName: collabdocs
+      AllocatedStorage: "20"
+      MaxAllocatedStorage: 100
+      StorageType: gp3
+      StorageEncrypted: true
+      MultiAZ: false
+      PubliclyAccessible: false
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref RDSSecurityGroup
+      BackupRetentionPeriod: 7
+      PreferredBackupWindow: "03:00-04:00"
+      PreferredMaintenanceWindow: "sun:04:00-sun:05:00"
+      EnablePerformanceInsights: true
+      PerformanceInsightsRetentionPeriod: 7
+      DeletionProtection: true
+      Tags:
+        - Key: Project
+          Value: CollabDocs
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ── Amazon MQ (RabbitMQ) ──────────────────────────────────────────────────────
+  MQBroker:
+    Type: AWS::AmazonMQ::Broker
+    Properties:
+      BrokerName: !Sub "collabdocs-mq-${Environment}"
+      DeploymentMode: SINGLE_INSTANCE
+      EngineType: RABBITMQ
+      EngineVersion: "3.13"
+      HostInstanceType: mq.t3.micro
+      PubliclyAccessible: false
+      AutoMinorVersionUpgrade: true
+      SubnetIds:
+        - !Ref PrivateSubnetA
+      SecurityGroups:
+        - !Ref MQSecurityGroup
+      Users:
+        - Username: collabdocs
+          Password: !Ref MQPassword
+      Logs:
+        General: true
+      Tags:
+        - Key: Project
+          Value: CollabDocs
+
+  # ── ElastiCache Redis ─────────────────────────────────────────────────────────
+  # cache.t3.micro — cost-effective for portfolio; upgrade to cache.t3.small for production load
+  RedisSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      CacheSubnetGroupName: !Sub "collabdocs-redis-subnets-${Environment}"
+      Description: "CollabDocs Redis subnet group (private subnets)"
+      SubnetIds:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+
+  RedisCluster:
+    Type: AWS::ElastiCache::CacheCluster
+    Properties:
+      ClusterName: !Sub "collabdocs-redis-${Environment}"
+      Engine: redis
+      EngineVersion: "7.1"
+      CacheNodeType: cache.t3.micro
+      NumCacheNodes: 1
+      CacheSubnetGroupName: !Ref RedisSubnetGroup
+      VpcSecurityGroupIds:
+        - !Ref RedisSecurityGroup
+      # Encrypt data at rest and in transit
+      TransitEncryptionEnabled: false   # t3.micro requires cluster-mode disabled and TLS off for simplicity
+      AtRestEncryptionEnabled: true
+      AutoMinorVersionUpgrade: true
+      Tags:
+        - Key: Project
+          Value: CollabDocs
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ── SQS FIFO Queue ────────────────────────────────────────────────────────────
+  # Alternative/complement to Amazon MQ for document domain events.
+  # FIFO ensures exactly-once delivery and strict ordering per MessageGroupId.
+  EventsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: "collabdocs-events.fifo"
+      FifoQueue: true
+      ContentBasedDeduplication: true
+      VisibilityTimeout: 60
+      MessageRetentionPeriod: 86400    # 1 day
+      ReceiveMessageWaitTimeSeconds: 20 # long polling — reduces empty receives
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt EventsDLQ.Arn
+        maxReceiveCount: 5
+      Tags:
+        - Key: Project
+          Value: CollabDocs
+        - Key: Environment
+          Value: !Ref Environment
+
+  EventsDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: "collabdocs-events-dlq.fifo"
+      FifoQueue: true
+      ContentBasedDeduplication: true
+      MessageRetentionPeriod: 604800  # 7 days — gives time to investigate failures
+      Tags:
+        - Key: Project
+          Value: CollabDocs
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ── Secrets Manager ───────────────────────────────────────────────────────────
+  SecretRDSConnectionString:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: "collabdocs/rds-connection-string"
+      Description: "RDS PostgreSQL connection string for CollabDocs API"
+      SecretString: !Sub
+        - "Host=${RDSEndpoint};Port=5432;Database=collabdocs;Username=collabdocs;Password=${DBPassword}"
+        - RDSEndpoint: !GetAtt RDSInstance.Endpoint.Address
+      Tags:
+        - Key: Project
+          Value: CollabDocs
+
+  SecretJwtSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: "collabdocs/jwt-secret"
+      Description: "JWT signing secret for CollabDocs API"
+      SecretString: !Ref JwtSecret
+      Tags:
+        - Key: Project
+          Value: CollabDocs
+
+  SecretMQHost:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: "collabdocs/mq-host"
+      Description: "Amazon MQ RabbitMQ host for CollabDocs API"
+      SecretString: !Sub
+        - "amqps://${MQEndpoint}:5671"
+        - MQEndpoint: !Select [0, !GetAtt MQBroker.AmqpEndpoints]
+      Tags:
+        - Key: Project
+          Value: CollabDocs
+
+  SecretMQUsername:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: "collabdocs/mq-username"
+      Description: "Amazon MQ username for CollabDocs API"
+      SecretString: "collabdocs"
+      Tags:
+        - Key: Project
+          Value: CollabDocs
+
+  SecretMQPassword:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: "collabdocs/mq-password"
+      Description: "Amazon MQ password for CollabDocs API"
+      SecretString: !Ref MQPassword
+      Tags:
+        - Key: Project
+          Value: CollabDocs
+
+  SecretRedisConnectionString:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: "collabdocs/redis-connection-string"
+      Description: "ElastiCache Redis connection string for CollabDocs API"
+      SecretString: !Sub
+        - "${RedisEndpoint}:6379"
+        - RedisEndpoint: !GetAtt RedisCluster.RedisEndpoint.Address
+      Tags:
+        - Key: Project
+          Value: CollabDocs
+
+  # ── CloudWatch Log Group ──────────────────────────────────────────────────────
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: "/ecs/collabdocs-api"
+      RetentionInDays: 30
+      Tags:
+        - Key: Project
+          Value: CollabDocs
+
+  # ── IAM Roles ─────────────────────────────────────────────────────────────────
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: "collabdocs-ecs-execution-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: SecretsManagerReadAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref SecretRDSConnectionString
+                  - !Ref SecretJwtSecret
+                  - !Ref SecretMQHost
+                  - !Ref SecretMQUsername
+                  - !Ref SecretMQPassword
+                  - !Ref SecretRedisConnectionString
+
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: "collabdocs-task-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CloudWatchLogsAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt LogGroup.Arn
+        - PolicyName: SQSAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:ChangeMessageVisibility
+                Resource:
+                  - !GetAtt EventsQueue.Arn
+                  - !GetAtt EventsDLQ.Arn
+
+  # ── ECS Cluster ───────────────────────────────────────────────────────────────
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: "collabdocs-cluster"
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+      CapacityProviders:
+        - FARGATE
+        - FARGATE_SPOT
+      DefaultCapacityProviderStrategy:
+        - CapacityProvider: FARGATE
+          Weight: 1
+          Base: 1
+      Tags:
+        - Key: Project
+          Value: CollabDocs
+
+  # ── Application Load Balancer ─────────────────────────────────────────────────
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: "collabdocs-alb"
+      Scheme: internet-facing
+      Type: application
+      Subnets:
+        - !Ref PublicSubnetA
+        - !Ref PublicSubnetB
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+      Tags:
+        - Key: Project
+          Value: CollabDocs
+
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: "collabdocs-api-tg"
+      Port: 5000
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !Ref VPC
+      HealthCheckEnabled: true
+      HealthCheckPath: "/health"
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: "200"
+      DeregistrationDelay: 30
+      Tags:
+        - Key: Project
+          Value: CollabDocs
+
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ALB
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+
+  # ── ECS Task Definition ───────────────────────────────────────────────────────
+  ECSTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: "collabdocs-api"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: "512"
+      Memory: "1024"
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+        - Name: collabdocs-api
+          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/collabdocs-api:${ApiImageTag}"
+          PortMappings:
+            - ContainerPort: 5000
+              Protocol: tcp
+          Environment:
+            - Name: ASPNETCORE_ENVIRONMENT
+              Value: Production
+            - Name: ASPNETCORE_URLS
+              Value: "http://+:5000"
+            - Name: AllowedOrigins__0
+              Value: !Ref AllowedFrontendOrigin
+            - Name: OTEL_SERVICE_NAME
+              Value: "collabdocs-api"
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: SQS__QueueUrl
+              Value: !Ref EventsQueue
+            - Name: SQS__DlqUrl
+              Value: !Ref EventsDLQ
+          Secrets:
+            - Name: ConnectionStrings__Default
+              ValueFrom: !Ref SecretRDSConnectionString
+            - Name: ConnectionStrings__Redis
+              ValueFrom: !Ref SecretRedisConnectionString
+            - Name: Jwt__Secret
+              ValueFrom: !Ref SecretJwtSecret
+            - Name: RabbitMQ__Host
+              ValueFrom: !Ref SecretMQHost
+            - Name: RabbitMQ__Username
+              ValueFrom: !Ref SecretMQUsername
+            - Name: RabbitMQ__Password
+              ValueFrom: !Ref SecretMQPassword
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: "/ecs/collabdocs-api"
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - "curl -f http://localhost:5000/health || exit 1"
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 60
+          Essential: true
+          ReadonlyRootFilesystem: false
+      Tags:
+        - Key: Project
+          Value: CollabDocs
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ── ECS Service ───────────────────────────────────────────────────────────────
+  ECSService:
+    Type: AWS::ECS::Service
+    DependsOn: ALBListener
+    Properties:
+      ServiceName: "collabdocs-api-service"
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref ECSTaskDefinition
+      DesiredCount: !Ref DesiredCount
+      LaunchType: FARGATE
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 100
+        MaximumPercent: 200
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+            - !Ref PrivateSubnetA
+            - !Ref PrivateSubnetB
+          SecurityGroups:
+            - !Ref ECSSecurityGroup
+          AssignPublicIp: DISABLED
+      LoadBalancers:
+        - ContainerName: collabdocs-api
+          ContainerPort: 5000
+          TargetGroupArn: !Ref ALBTargetGroup
+      HealthCheckGracePeriodSeconds: 60
+      EnableExecuteCommand: true
+      Tags:
+        - Key: Project
+          Value: CollabDocs
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ── CloudWatch Alarms ─────────────────────────────────────────────────────────
+  AlarmHighCPU:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: "collabdocs-api-high-cpu"
+      AlarmDescription: "ECS task CPU utilization exceeds 80%"
+      Namespace: AWS/ECS
+      MetricName: CPUUtilization
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref ECSCluster
+        - Name: ServiceName
+          Value: !GetAtt ECSService.Name
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+
+  AlarmHighMemory:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: "collabdocs-api-high-memory"
+      AlarmDescription: "ECS task memory utilization exceeds 85%"
+      Namespace: AWS/ECS
+      MetricName: MemoryUtilization
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref ECSCluster
+        - Name: ServiceName
+          Value: !GetAtt ECSService.Name
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 85
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+
+  AlarmUnhealthyTasks:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: "collabdocs-api-unhealthy-tasks"
+      AlarmDescription: "ALB target group has unhealthy hosts"
+      Namespace: AWS/ApplicationELB
+      MetricName: UnHealthyHostCount
+      Dimensions:
+        - Name: TargetGroup
+          Value: !GetAtt ALBTargetGroup.TargetGroupFullName
+        - Name: LoadBalancer
+          Value: !GetAtt ALB.LoadBalancerFullName
+      Statistic: Average
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+
+  Alarm5xxErrors:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: "collabdocs-api-5xx-errors"
+      AlarmDescription: "ALB 5xx error rate exceeds threshold"
+      Namespace: AWS/ApplicationELB
+      MetricName: HTTPCode_Target_5XX_Count
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !GetAtt ALB.LoadBalancerFullName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+
+# ─── Outputs ───────────────────────────────────────────────────────────────────
+Outputs:
+  ALBDNSName:
+    Description: "Public DNS name of the Application Load Balancer"
+    Value: !GetAtt ALB.DNSName
+    Export:
+      Name: !Sub "${AWS::StackName}-ALBDNSName"
+
+  ECRRepositoryURI:
+    Description: "ECR repository URI for docker push"
+    Value: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/collabdocs-api"
+    Export:
+      Name: !Sub "${AWS::StackName}-ECRRepositoryURI"
+
+  ECSClusterName:
+    Description: "ECS cluster name"
+    Value: !Ref ECSCluster
+    Export:
+      Name: !Sub "${AWS::StackName}-ECSClusterName"
+
+  ECSServiceName:
+    Description: "ECS service name"
+    Value: !GetAtt ECSService.Name
+    Export:
+      Name: !Sub "${AWS::StackName}-ECSServiceName"
+
+  RDSEndpoint:
+    Description: "RDS PostgreSQL endpoint (private)"
+    Value: !GetAtt RDSInstance.Endpoint.Address
+    Export:
+      Name: !Sub "${AWS::StackName}-RDSEndpoint"
+
+  VPCId:
+    Description: "VPC ID"
+    Value: !Ref VPC
+    Export:
+      Name: !Sub "${AWS::StackName}-VPCId"
+
+  LogGroupName:
+    Description: "CloudWatch log group for ECS tasks"
+    Value: !Ref LogGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-LogGroupName"
+
+  RedisEndpoint:
+    Description: "ElastiCache Redis endpoint (private)"
+    Value: !Sub "${RedisCluster.RedisEndpoint.Address}:6379"
+    Export:
+      Name: !Sub "${AWS::StackName}-RedisEndpoint"
+
+  SQSQueueUrl:
+    Description: "SQS FIFO queue URL for document events"
+    Value: !Ref EventsQueue
+    Export:
+      Name: !Sub "${AWS::StackName}-SQSQueueUrl"
+
+  SQSDLQUrl:
+    Description: "SQS dead-letter queue URL"
+    Value: !Ref EventsDLQ
+    Export:
+      Name: !Sub "${AWS::StackName}-SQSDLQUrl"
