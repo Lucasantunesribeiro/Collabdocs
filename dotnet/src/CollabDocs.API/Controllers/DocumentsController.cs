@@ -52,7 +52,7 @@ public class DocumentsController(ISender sender) : ControllerBase
     [ProducesResponseType(typeof(DocumentDto), 201)]
     public async Task<IActionResult> CreateDocument([FromBody] CreateDocumentRequest request, CancellationToken cancellationToken)
     {
-        var visibility = Enum.TryParse<Visibility>(request.Visibility, true, out var v) ? v : Visibility.Public;
+        var visibility = Enum.TryParse<Visibility>(request.Visibility, true, out var v) ? v : Visibility.Private;
         var result = await sender.Send(
             new CreateDocumentCommand(UserId, UserEmail, UserName, request.Title,
                 request.Content ?? $"# {request.Title}\n\nStart writing...", visibility),
