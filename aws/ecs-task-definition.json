@@ -1,0 +1,127 @@
+{
+  "family": "collabdocs-api",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/collabdocs-ecs-execution-role",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/collabdocs-task-role",
+  "containerDefinitions": [
+    {
+      "name": "collabdocs-api",
+      "image": "ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/collabdocs-api:latest",
+      "portMappings": [
+        {
+          "containerPort": 5000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "ASPNETCORE_ENVIRONMENT",
+          "value": "Production"
+        },
+        {
+          "name": "ASPNETCORE_URLS",
+          "value": "http://+:5000"
+        },
+        {
+          "name": "AllowedOrigins__0",
+          "value": "https://collabdocs-app.vercel.app"
+        },
+        {
+          "name": "OTEL_SERVICE_NAME",
+          "value": "collabdocs-api"
+        },
+        {
+          "name": "OTEL_EXPORTER_OTLP_ENDPOINT",
+          "value": "https://api.honeycomb.io"
+        },
+        {
+          "name": "AWS_REGION",
+          "value": "REGION"
+        },
+        {
+          "name": "SQS__QueueUrl",
+          "value": "https://sqs.REGION.amazonaws.com/ACCOUNT_ID/collabdocs-events.fifo"
+        },
+        {
+          "name": "SQS__DlqUrl",
+          "value": "https://sqs.REGION.amazonaws.com/ACCOUNT_ID/collabdocs-events-dlq.fifo"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "ConnectionStrings__Default",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:collabdocs/rds-connection-string"
+        },
+        {
+          "name": "ConnectionStrings__Redis",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:collabdocs/redis-connection-string"
+        },
+        {
+          "name": "Jwt__Secret",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:collabdocs/jwt-secret"
+        },
+        {
+          "name": "RabbitMQ__Host",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:collabdocs/mq-host"
+        },
+        {
+          "name": "RabbitMQ__Username",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:collabdocs/mq-username"
+        },
+        {
+          "name": "RabbitMQ__Password",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:collabdocs/mq-password"
+        },
+        {
+          "name": "OTEL_EXPORTER_OTLP_HEADERS",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:collabdocs/otel-headers"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/collabdocs-api",
+          "awslogs-region": "REGION",
+          "awslogs-stream-prefix": "ecs",
+          "awslogs-create-group": "true"
+        }
+      },
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "curl -f http://localhost:5000/health || exit 1"
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      },
+      "essential": true,
+      "readonlyRootFilesystem": false,
+      "ulimits": [
+        {
+          "name": "nofile",
+          "softLimit": 65536,
+          "hardLimit": 65536
+        }
+      ]
+    }
+  ],
+  "tags": [
+    {
+      "key": "Project",
+      "value": "CollabDocs"
+    },
+    {
+      "key": "Environment",
+      "value": "production"
+    },
+    {
+      "key": "ManagedBy",
+      "value": "github-actions"
+    }
+  ]
+}
