@@ -1,5 +1,6 @@
 using System.Text.Json;
 using CollabDocs.Application.Commands;
+using CollabDocs.Application.Interfaces;
 using CollabDocs.Domain.Events;
 using CollabDocs.Domain.Interfaces;
 using CollabDocs.Domain.Outbox;
@@ -10,7 +11,8 @@ namespace CollabDocs.Application.Handlers;
 public class DeleteDocumentHandler(
     IDocumentRepository documentRepository,
     IAuditService auditService,
-    IOutboxRepository outboxRepository
+    IOutboxRepository outboxRepository,
+    IDocumentCacheService cacheService
 ) : IRequestHandler<DeleteDocumentCommand>
 {
     public async Task Handle(DeleteDocumentCommand request, CancellationToken cancellationToken)
@@ -38,5 +40,6 @@ public class DeleteDocumentHandler(
         // SaveChanges inside DeleteAsync commits both the deletion and the outbox message
         await documentRepository.DeleteAsync(request.DocumentId, cancellationToken);
         await auditService.LogAsync(request.DocumentId, request.UserId, "deleted");
+        await cacheService.InvalidateUserAsync(request.UserId, cancellationToken);
     }
 }

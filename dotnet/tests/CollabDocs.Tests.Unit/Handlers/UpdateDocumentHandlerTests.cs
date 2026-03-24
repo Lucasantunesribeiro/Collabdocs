@@ -1,5 +1,6 @@
 using CollabDocs.Application.Commands;
 using CollabDocs.Application.Handlers;
+using CollabDocs.Application.Interfaces;
 using CollabDocs.Domain.Entities;
 using CollabDocs.Domain.Enums;
 using CollabDocs.Domain.Interfaces;
@@ -16,9 +17,10 @@ public class UpdateDocumentHandlerTests
     private readonly Mock<ICollaboratorRepository> _collaboratorRepo = new();
     private readonly Mock<IAuditService> _audit = new();
     private readonly Mock<IOutboxRepository> _outbox = new();
+    private readonly Mock<IDocumentCacheService> _cacheService = new();
 
     private UpdateDocumentHandler CreateHandler() =>
-        new(_documentRepo.Object, _collaboratorRepo.Object, _audit.Object, _outbox.Object);
+        new(_documentRepo.Object, _collaboratorRepo.Object, _audit.Object, _outbox.Object, _cacheService.Object);
 
     private static Document CreateDocument(string ownerId = "owner-1") =>
         Document.Create(ownerId, "Title", "Original content", Visibility.Public);

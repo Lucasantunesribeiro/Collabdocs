@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using CollabDocs.Application.Commands;
 using CollabDocs.Application.DTOs;
+using CollabDocs.Application.Interfaces;
 using CollabDocs.Domain.Entities;
 using CollabDocs.Domain.Events;
 using CollabDocs.Domain.Interfaces;
@@ -14,7 +15,8 @@ public class CreateDocumentHandler(
     IDocumentRepository documentRepository,
     IUserRepository userRepository,
     IAuditService auditService,
-    IOutboxRepository outboxRepository
+    IOutboxRepository outboxRepository,
+    IDocumentCacheService cacheService
 ) : IRequestHandler<CreateDocumentCommand, DocumentDto>
 {
     public async Task<DocumentDto> Handle(CreateDocumentCommand request, CancellationToken cancellationToken)
@@ -57,6 +59,7 @@ public class CreateDocumentHandler(
         // SaveChanges is called inside AddAsync — persists document + outbox message atomically
         await documentRepository.AddAsync(document, cancellationToken);
         await auditService.LogAsync(document.Id, request.OwnerId, "created");
+        await cacheService.InvalidateUserAsync(request.OwnerId, cancellationToken);
 
         activity?.SetTag("document.id", document.Id);
         activity?.SetStatus(ActivityStatusCode.Ok);

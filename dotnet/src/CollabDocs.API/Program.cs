@@ -1,6 +1,8 @@
 using System.Text;
 using CollabDocs.Application.Handlers;
+using CollabDocs.Application.Interfaces;
 using CollabDocs.Domain.Interfaces;
+using CollabDocs.Infrastructure.Cache;
 using CollabDocs.Infrastructure.Data;
 using CollabDocs.Infrastructure.Messaging;
 using CollabDocs.Infrastructure.Outbox;
@@ -13,6 +15,7 @@ using Microsoft.OpenApi.Models;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using OpenTelemetry.Metrics;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -37,6 +40,27 @@ builder.Services.Configure<RabbitMQSettings>(
     builder.Configuration.GetSection("RabbitMQ"));
 builder.Services.AddHostedService<OutboxPublisherService>();
 builder.Services.AddHostedService<DocumentEventConsumer>();
+
+// Redis cache — degrades gracefully to NullDocumentCacheService when Redis is unavailable
+var redisConnectionString = builder.Configuration.GetConnectionString("Redis");
+if (!string.IsNullOrEmpty(redisConnectionString))
+{
+    try
+    {
+        var redisConn = ConnectionMultiplexer.Connect(redisConnectionString);
+        builder.Services.AddSingleton<IConnectionMultiplexer>(redisConn);
+        builder.Services.AddScoped<IDocumentCacheService, DocumentCacheService>();
+    }
+    catch (Exception ex)
+    {
+        builder.Services.AddScoped<IDocumentCacheService, NullDocumentCacheService>();
+        Console.WriteLine($"[WARN] Redis unavailable — using NullDocumentCacheService: {ex.Message}");
+    }
+}
+else
+{
+    builder.Services.AddScoped<IDocumentCacheService, NullDocumentCacheService>();
+}
 
 // JWT Authentication
 var jwtSecret = builder.Configuration["Jwt:Secret"]

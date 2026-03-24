@@ -63,10 +63,13 @@ services:
       - RabbitMQ__Password=guest
       - RabbitMQ__ExchangeName=collabdocs.events
       - RabbitMQ__QueueName=collabdocs.documents
+      - ConnectionStrings__Redis=redis:6379
     depends_on:
       postgres:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
   rabbitmq:
@@ -85,6 +88,19 @@ services:
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/var/lib/redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
 volumes:
   postgres_data:
   rabbitmq_data:
+  redis_data:
