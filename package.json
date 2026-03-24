@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
+    "typecheck:workers": "tsc --noEmit -p workers/tsconfig.json",
     "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest",

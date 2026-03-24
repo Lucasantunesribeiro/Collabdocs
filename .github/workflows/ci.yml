@@ -17,8 +17,12 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci --legacy-peer-deps
-      - name: Type check
+      - name: Type check (Next.js)
         run: npm run typecheck
+      - name: Type check (Workers)
+        run: npm run typecheck:workers
+      - name: Lint
+        run: npm run lint
       - name: Build
         run: npm run build
 

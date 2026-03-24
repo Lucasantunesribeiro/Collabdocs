@@ -1,7 +1,6 @@
 import NextAuth, { NextAuthOptions } from "next-auth"
 import GithubProvider from "next-auth/providers/github"
 import GoogleProvider from "next-auth/providers/google"
-import { DefaultSession } from "next-auth"
 import { SignJWT } from "jose"
 
 // Types are declared in src/types/next-auth.d.ts
@@ -97,7 +96,7 @@ export const authOptions: NextAuthOptions = {
       return session
     },
     
-    async signIn({ user, account, profile, email, credentials }) {
+    async signIn({ user, account, profile }) {
       // Log detalhado do login
       console.log('[NextAuth] SignIn Callback:', {
         provider: account?.provider,

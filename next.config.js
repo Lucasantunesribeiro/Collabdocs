@@ -1,10 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
-  // Workers are a separate Cloudflare project — type errors there are caught in CI,
-  // not during the Next.js build.
-  typescript: { ignoreBuildErrors: true },
-  eslint: { ignoreDuringBuilds: true },
+  // Workers are a separate Cloudflare project — checked via workers/tsconfig.json in CI.
+  typescript: { ignoreBuildErrors: false },
+  eslint: { ignoreDuringBuilds: false },
   experimental: {
     turbo: {
       rules: {
