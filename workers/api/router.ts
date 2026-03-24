@@ -14,6 +14,7 @@ import {
   handleHealthCheck,
   logRequest,
 } from './handlers';
+import { hasDocumentAccess } from '../infrastructure/db';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -185,6 +186,24 @@ export default {
             corsResponse(
               401,
               JSON.stringify({ error: 'Unauthorized: valid JWT required for WebSocket' }),
+              request,
+              env.ALLOWED_ORIGINS ?? '',
+              { 'Content-Type': 'application/json' }
+            )
+          )
+        );
+      }
+
+      // Authorization: verify the authenticated user has access to this document.
+      // This prevents a valid JWT holder from joining sessions for documents they
+      // don't own or haven't been granted collaborator access to.
+      const allowed = await hasDocumentAccess(env.DB, documentId, user.id, user.email);
+      if (!allowed) {
+        return timed(
+          Promise.resolve(
+            corsResponse(
+              403,
+              JSON.stringify({ error: 'Forbidden: you do not have access to this document' }),
               request,
               env.ALLOWED_ORIGINS ?? '',
               { 'Content-Type': 'application/json' }

@@ -265,6 +265,39 @@ export async function removeCollaboratorRecord(
   }
 }
 
+/**
+ * Returns true if the user may access the document:
+ * owner, explicit collaborator (by userId or email), or the document is public.
+ */
+export async function hasDocumentAccess(
+  db: D1Database,
+  documentId: string,
+  userId: string,
+  email: string
+): Promise<boolean> {
+  try {
+    const row = await db
+      .prepare(
+        `SELECT 1 FROM documents d
+         LEFT JOIN document_collaborators dc ON d.id = dc.document_id
+         WHERE d.id = ?
+           AND (
+             d.visibility = 'public'
+             OR d.owner_id = ?
+             OR (dc.user_id = ? AND dc.permission IN ('read', 'write', 'owner'))
+             OR (dc.user_email = ? AND dc.permission IN ('read', 'write', 'owner'))
+           )
+         LIMIT 1`
+      )
+      .bind(documentId, userId, userId, email)
+      .first();
+    return row !== null;
+  } catch {
+    // Fail-open: if the DB is unavailable don't block the session
+    return true;
+  }
+}
+
 export async function checkCollaboratorAccess(
   db: D1Database,
   documentId: string,
