@@ -3,6 +3,7 @@ using CollabDocs.Application.Handlers;
 using CollabDocs.Domain.Entities;
 using CollabDocs.Domain.Enums;
 using CollabDocs.Domain.Interfaces;
+using CollabDocs.Domain.Outbox;
 using FluentAssertions;
 using Moq;
 using Xunit;
@@ -14,9 +15,10 @@ public class UpdateDocumentHandlerTests
     private readonly Mock<IDocumentRepository> _documentRepo = new();
     private readonly Mock<ICollaboratorRepository> _collaboratorRepo = new();
     private readonly Mock<IAuditService> _audit = new();
+    private readonly Mock<IOutboxRepository> _outbox = new();
 
     private UpdateDocumentHandler CreateHandler() =>
-        new(_documentRepo.Object, _collaboratorRepo.Object, _audit.Object);
+        new(_documentRepo.Object, _collaboratorRepo.Object, _audit.Object, _outbox.Object);
 
     private static Document CreateDocument(string ownerId = "owner-1") =>
         Document.Create(ownerId, "Title", "Original content", Visibility.Public);
@@ -67,5 +69,22 @@ public class UpdateDocumentHandlerTests
 
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*modified by another user*");
+    }
+
+    [Fact]
+    public async Task Handle_WritesOutboxMessage()
+    {
+        var doc = CreateDocument("owner-1");
+        _documentRepo.Setup(r => r.GetByIdAsync(doc.Id, It.IsAny<CancellationToken>())).ReturnsAsync(doc);
+        _collaboratorRepo.Setup(r => r.GetByDocumentIdAsync(doc.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        await CreateHandler().Handle(
+            new UpdateDocumentCommand(doc.Id, "owner-1", "New content", null, null, IdempotencyKey: "idem-key-2"),
+            CancellationToken.None);
+
+        _outbox.Verify(o => o.AddAsync(
+            It.Is<OutboxMessage>(m => m.EventType == "document.updated" && m.IdempotencyKey == "idem-key-2"),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 }

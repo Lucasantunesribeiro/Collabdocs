@@ -8,5 +8,6 @@ public record UpdateDocumentCommand(
     string UserId,
     string? Content,
     string? Title,
-    int? ExpectedVersion
+    int? ExpectedVersion,
+    string? IdempotencyKey = null
 ) : IRequest<DocumentDto>;

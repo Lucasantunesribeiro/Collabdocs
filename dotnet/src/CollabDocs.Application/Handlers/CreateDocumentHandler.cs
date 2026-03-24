@@ -1,8 +1,11 @@
 using System.Diagnostics;
+using System.Text.Json;
 using CollabDocs.Application.Commands;
 using CollabDocs.Application.DTOs;
 using CollabDocs.Domain.Entities;
+using CollabDocs.Domain.Events;
 using CollabDocs.Domain.Interfaces;
+using CollabDocs.Domain.Outbox;
 using MediatR;
 
 namespace CollabDocs.Application.Handlers;
@@ -10,7 +13,8 @@ namespace CollabDocs.Application.Handlers;
 public class CreateDocumentHandler(
     IDocumentRepository documentRepository,
     IUserRepository userRepository,
-    IAuditService auditService
+    IAuditService auditService,
+    IOutboxRepository outboxRepository
 ) : IRequestHandler<CreateDocumentCommand, DocumentDto>
 {
     public async Task<DocumentDto> Handle(CreateDocumentCommand request, CancellationToken cancellationToken)
@@ -37,6 +41,20 @@ public class CreateDocumentHandler(
             request.Visibility
         );
 
+        // Stage outbox message atomically with the document write
+        var domainEvent = new DocumentCreatedEvent
+        {
+            DocumentId = document.Id,
+            Title = document.Title,
+            OwnerId = document.OwnerId
+        };
+        var outboxMessage = OutboxMessage.Create(
+            domainEvent.EventType,
+            JsonSerializer.Serialize(domainEvent),
+            request.IdempotencyKey);
+        await outboxRepository.AddAsync(outboxMessage, cancellationToken);
+
+        // SaveChanges is called inside AddAsync — persists document + outbox message atomically
         await documentRepository.AddAsync(document, cancellationToken);
         await auditService.LogAsync(document.Id, request.OwnerId, "created");
 

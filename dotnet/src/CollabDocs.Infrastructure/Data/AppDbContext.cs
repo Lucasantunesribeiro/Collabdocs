@@ -1,5 +1,6 @@
 using CollabDocs.Domain.Entities;
 using CollabDocs.Domain.Enums;
+using CollabDocs.Domain.Outbox;
 using Microsoft.EntityFrameworkCore;
 
 namespace CollabDocs.Infrastructure.Data;
@@ -9,6 +10,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Document> Documents => Set<Document>();
     public DbSet<User> Users => Set<User>();
     public DbSet<DocumentCollaborator> DocumentCollaborators => Set<DocumentCollaborator>();
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -40,6 +42,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.Property(dc => dc.Permission)
                 .HasConversion(p => p.ToString().ToLower(), p => Enum.Parse<Permission>(p, true));
             entity.HasIndex(dc => dc.DocumentId);
+        });
+
+        modelBuilder.Entity<OutboxMessage>(entity =>
+        {
+            entity.HasKey(m => m.Id);
+            entity.Property(m => m.EventType).IsRequired().HasMaxLength(128);
+            entity.Property(m => m.Payload).IsRequired();
+            entity.Property(m => m.IdempotencyKey).HasMaxLength(256);
+            entity.HasIndex(m => new { m.ProcessedAt, m.RetryCount }); // for efficient polling
+            entity.HasIndex(m => m.IdempotencyKey);
         });
     }
 }
