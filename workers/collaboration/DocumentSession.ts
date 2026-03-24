@@ -31,8 +31,14 @@ export class DocumentSession {
     }
 
     const url = new URL(request.url);
-    const userId = url.searchParams.get('userId') || 'anonymous';
-    const userName = url.searchParams.get('userName') || 'User';
+    // Use server-verified identity params set by the router after JWT validation.
+    // Client-supplied userId/userName params are intentionally ignored.
+    const userId = url.searchParams.get('__verified_userId');
+    const userName = url.searchParams.get('__verified_userName') || 'User';
+
+    if (!userId) {
+      return new Response('Unauthorized', { status: 401 });
+    }
 
     const { 0: client, 1: server } = new WebSocketPair();
     this.handleSession(server, userId, userName);

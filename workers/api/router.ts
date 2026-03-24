@@ -1,6 +1,7 @@
 import type { Env } from '../index';
 import { corsResponse, getCORSHeaders } from '../middleware/cors';
 import { checkRateLimit } from '../middleware/rateLimit';
+import { verifyToken, verifyWebSocketToken } from '../middleware/auth';
 import {
   handleListDocuments,
   handleCreateDocument,
@@ -174,10 +175,35 @@ export default {
         );
       }
 
+      // Verify JWT before allowing WebSocket.
+      // Browsers cannot set custom headers on WS upgrades, so the token is
+      // passed as ?token=<jwt> and verified here (never trusted from the DO side).
+      const user = await verifyWebSocketToken(request, env.NEXTAUTH_SECRET);
+      if (!user) {
+        return timed(
+          Promise.resolve(
+            corsResponse(
+              401,
+              JSON.stringify({ error: 'Unauthorized: valid JWT required for WebSocket' }),
+              request,
+              env.ALLOWED_ORIGINS ?? '',
+              { 'Content-Type': 'application/json' }
+            )
+          )
+        );
+      }
+
+      // Build a new URL with server-verified identity; the DO trusts only these params.
+      const doUrl = new URL(request.url);
+      doUrl.searchParams.set('__verified_userId', user.id);
+      doUrl.searchParams.set('__verified_userName', user.name);
+      doUrl.searchParams.set('__verified_email', user.email);
+      const verifiedRequest = new Request(doUrl.toString(), request);
+
       // Route to the Durable Object for this document session
       const id = env.COLLAB_SESSIONS.idFromName(documentId);
       const session = env.COLLAB_SESSIONS.get(id);
-      return session.fetch(request);
+      return session.fetch(verifiedRequest);
     }
 
     // /api/documents/:id
