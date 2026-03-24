@@ -20,11 +20,11 @@ class_name = "RateLimiter"
 
 [[migrations]]
 tag = "v1"
-new_classes = ["DocumentSession"]
+new_sqlite_classes = ["DocumentSession"]
 
 [[migrations]]
 tag = "v2"
-new_classes = ["RateLimiter"]
+new_sqlite_classes = ["RateLimiter"]
 
 # Queues (requires Cloudflare Workers Paid plan — comment out if on free plan)
 # [[queues.producers]]
