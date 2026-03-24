@@ -2,7 +2,7 @@ import NextAuth, { NextAuthOptions } from "next-auth"
 import GithubProvider from "next-auth/providers/github"
 import GoogleProvider from "next-auth/providers/google"
 import { DefaultSession } from "next-auth"
-import { encode } from "next-auth/jwt"
+import { SignJWT } from "jose"
 
 // Types are declared in src/types/next-auth.d.ts
 
@@ -67,13 +67,21 @@ export const authOptions: NextAuthOptions = {
         session.user.provider = (token.provider || 'google') as 'github' | 'google'
         session.accessToken = (token.accessToken || '') as string
 
-        // Encode the NextAuth JWT so the client can use it as a Bearer token
-        // for authenticated Worker API calls.
+        // Create a standard HS256 JWT (3-part JWS) for the Worker API.
+        // NextAuth's encode() creates a JWE (5-part encrypted), which the Worker
+        // cannot verify. We use jose SignJWT to produce a compatible HS256 token.
         try {
-          session.sessionToken = await encode({
-            token,
-            secret: process.env.NEXTAUTH_SECRET as string,
+          const workerSecret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET as string)
+          session.sessionToken = await new SignJWT({
+            sub: token.sub,
+            email: token.email,
+            name: token.name,
+            provider: token.provider,
           })
+            .setProtectedHeader({ alg: 'HS256' })
+            .setIssuedAt()
+            .setExpirationTime('30d')
+            .sign(workerSecret)
         } catch {
           // Non-fatal — client will receive empty sessionToken
         }
