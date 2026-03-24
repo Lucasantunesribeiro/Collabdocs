@@ -1,0 +1,183 @@
+# AWS ECS Deployment — CollabDocs .NET API
+#
+# Triggers on push to main when dotnet/** files change.
+# Uses OIDC (no static AWS keys) for short-lived credentials.
+#
+# Required GitHub secrets:
+#   AWS_ROLE_ARN      — IAM role ARN with OIDC trust (e.g. arn:aws:iam::123:role/github-actions-collabdocs)
+#   AWS_REGION        — Target region (e.g. us-east-1)
+#   ECR_REPOSITORY    — ECR repo name (e.g. collabdocs-api)
+#
+# The ECS cluster and service names are derived from the CloudFormation stack
+# exported values; override via env vars if needed.
+
+name: Deploy .NET API to ECS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "dotnet/**"
+      - "aws/ecs-task-definition.json"
+      - ".github/workflows/deploy.yml"
+
+permissions:
+  id-token: write   # required for OIDC token exchange
+  contents: read
+
+env:
+  ECS_CLUSTER: collabdocs-cluster
+  ECS_SERVICE: collabdocs-api-service
+  CONTAINER_NAME: collabdocs-api
+  TASK_DEFINITION_FAMILY: collabdocs-api
+
+jobs:
+  # ── Stage 1: Build & Test ────────────────────────────────────────────────────
+  dotnet-build:
+    name: Build & Test (.NET)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Restore dependencies
+        run: dotnet restore
+        working-directory: dotnet
+
+      - name: Build
+        run: dotnet build --no-restore -c Release
+        working-directory: dotnet
+
+      - name: Run tests
+        run: dotnet test --no-build -c Release --verbosity normal
+        working-directory: dotnet
+
+  # ── Stage 2: Build Docker image & push to ECR ───────────────────────────────
+  build-and-push:
+    name: Build Docker Image & Push to ECR
+    runs-on: ubuntu-latest
+    needs: dotnet-build
+    outputs:
+      image: ${{ steps.build-image.outputs.image }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          # Short-lived credentials — no static keys stored
+          role-session-name: github-actions-collabdocs-${{ github.run_id }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push Docker image to ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+          # Tag with both commit SHA (immutable, traceable) and latest (convenience)
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            --file dotnet/src/CollabDocs.API/Dockerfile \
+            --context dotnet \
+            --tag "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" \
+            --tag "$ECR_REGISTRY/$ECR_REPOSITORY:latest" \
+            .
+          docker push "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          docker push "$ECR_REGISTRY/$ECR_REPOSITORY:latest"
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+
+  # ── Stage 3: Deploy to ECS ───────────────────────────────────────────────────
+  deploy:
+    name: Deploy to ECS Fargate
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    environment: production   # requires manual approval if configured in GitHub
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          role-session-name: github-actions-collabdocs-deploy-${{ github.run_id }}
+
+      - name: Download current task definition from ECS
+        # Always use the live task definition as the base so CloudFormation-managed
+        # fields (execution role, task role, log group, etc.) stay in sync.
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition "${{ env.TASK_DEFINITION_FAMILY }}" \
+            --query taskDefinition \
+            > /tmp/task-definition.json
+
+      - name: Render updated task definition with new image
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: /tmp/task-definition.json
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ needs.build-and-push.outputs.image }}
+
+      - name: Register new task definition revision
+        id: register-task-def
+        run: |
+          TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json "file://${{ steps.task-def.outputs.task-definition }}" \
+            --query "taskDefinition.taskDefinitionArn" \
+            --output text)
+          echo "task-def-arn=$TASK_DEF_ARN" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to ECS service (rolling update)
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          # Wait until deployment is stable before marking the step as successful.
+          # The ECS circuit breaker will auto-rollback if tasks fail to start.
+          wait-for-service-stability: true
+
+      - name: Verify health endpoint after deployment
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          ALB_DNS=$(aws cloudformation describe-stacks \
+            --stack-name collabdocs \
+            --query "Stacks[0].Outputs[?OutputKey=='ALBDNSName'].OutputValue" \
+            --output text)
+          echo "ALB DNS: $ALB_DNS"
+          # Retry up to 6 times (3 minutes) to account for DNS propagation
+          for i in $(seq 1 6); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://$ALB_DNS/health" || true)
+            echo "Attempt $i — HTTP $STATUS"
+            if [ "$STATUS" = "200" ]; then
+              echo "Health check passed."
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "Health check failed after 6 attempts."
+          exit 1
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "Deployment failed. The ECS circuit breaker may have initiated a rollback."
+          echo "Check CloudWatch Logs: /ecs/collabdocs-api"
+          echo "Check ECS service events in the AWS Console."
