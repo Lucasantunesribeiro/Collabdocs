@@ -32,9 +32,16 @@ interface CollaborativeEditorProps {
   } | null;
 }
 
-function useCollaboration(documentId: string, token: string) {
+function useCollaboration(
+  documentId: string,
+  token: string,
+  onRemoteUpdate: (content: string) => void
+) {
   const [connectedUsers, setConnectedUsers] = useState<{ userId: string; userName: string }[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
+  // Keep a stable ref to the callback so we don't restart the WebSocket when it changes
+  const onRemoteUpdateRef = useRef(onRemoteUpdate);
+  useEffect(() => { onRemoteUpdateRef.current = onRemoteUpdate; });
 
   useEffect(() => {
     if (!documentId || documentId === 'demo' || !token) return;
@@ -55,6 +62,9 @@ function useCollaboration(documentId: string, token: string) {
           setConnectedUsers(prev => [...prev, { userId: msg.userId, userName: msg.userName }]);
         } else if (msg.type === 'leave') {
           setConnectedUsers(prev => prev.filter(u => u.userId !== msg.userId));
+        } else if (msg.type === 'update' && typeof msg.content === 'string') {
+          // Apply remote content update without triggering the local dirty/broadcast cycle
+          onRemoteUpdateRef.current(msg.content);
         }
       } catch {
         // ignore malformed messages
@@ -87,9 +97,12 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
   const [isLoadingCollaborators, setIsLoadingCollaborators] = useState(true);
 
   // Real-time collaboration via WebSocket (JWT passed as ?token= query param)
+  // onRemoteUpdate applies incoming content from other users without triggering
+  // the local dirty flag or re-broadcasting the change back.
   const { connectedUsers, broadcast } = useCollaboration(
     documentId,
-    session?.sessionToken || ''
+    session?.sessionToken || '',
+    (remoteContent) => setContent(remoteContent)
   );
 
   // Salvamento automático
