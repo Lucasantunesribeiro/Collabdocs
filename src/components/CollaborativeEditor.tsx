@@ -29,7 +29,7 @@ interface CollaborativeEditorProps {
   session: {
     user: { id: string; name: string; email: string; image?: string };
     sessionToken?: string;
-  };
+  } | null;
 }
 
 function useCollaboration(documentId: string, token: string) {
@@ -177,16 +177,18 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
       setCollaborators(response.collaborators || []);
     } catch (error) {
       console.error('Erro ao carregar colaboradores:', error);
-      // Fallback: minimal collaborator entry for the current user
-      setCollaborators([{
-        id: `user-${session.user.id}`,
-        document_id: documentId,
-        user_id: session.user.id,
-        user_email: session.user.email,
-        permission: 'owner',
-        added_by: session.user.id,
-        created_at: new Date().toISOString(),
-      }]);
+      // Fallback: minimal collaborator entry for the current user (only if session is available)
+      if (session?.user) {
+        setCollaborators([{
+          id: `user-${session.user.id}`,
+          document_id: documentId,
+          user_id: session.user.id,
+          user_email: session.user.email,
+          permission: 'owner',
+          added_by: session.user.id,
+          created_at: new Date().toISOString(),
+        }]);
+      }
     } finally {
       setIsLoadingCollaborators(false);
     }
@@ -366,7 +368,7 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
                     </div>
                   ) : (
                     collaborators.map((collaborator) => {
-                      const isCurrentUser = collaborator.user_id === session.user.id || collaborator.user_email === session.user.email;
+                      const isCurrentUser = session?.user && (collaborator.user_id === session.user.id || collaborator.user_email === session.user.email);
                       const isOwner = collaborator.permission === 'owner';
                       return (
                         <div key={collaborator.id} className="flex items-center gap-3">
