@@ -73,17 +73,12 @@ builder.Services.AddOpenTelemetry()
         {
             tracing.AddOtlpExporter();
         }
-        else
-        {
-            tracing.AddConsoleExporter();
-        }
     })
     .WithMetrics(metrics =>
     {
         metrics
             .AddAspNetCoreInstrumentation()
-            .AddHttpClientInstrumentation()
-            .AddRuntimeInstrumentation();
+            .AddHttpClientInstrumentation();
 
         if (!string.IsNullOrEmpty(otlpEndpoint))
         {

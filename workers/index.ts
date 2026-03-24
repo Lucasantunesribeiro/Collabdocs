@@ -1,6 +1,5 @@
 import router from './api/router';
 import type { EmailNotificationMessage } from './queues/emailConsumer';
-import { processEmailQueue } from './queues/emailConsumer';
 
 export { DocumentSession } from './collaboration/DocumentSession';
 export { RateLimiter } from './collaboration/RateLimiter';
@@ -22,11 +21,11 @@ export interface Env {
   COLLAB_SESSIONS: DurableObjectNamespace;
   /** Durable Object namespace for per-IP rate limiting. */
   RATE_LIMITER: DurableObjectNamespace;
-  /** Cloudflare Queue for email notifications. */
-  NOTIFICATION_QUEUE: Queue<EmailNotificationMessage>;
+  /** Cloudflare Queue for email notifications (requires Paid plan). */
+  NOTIFICATION_QUEUE?: Queue<EmailNotificationMessage>;
 }
 
 export default {
   fetch: router.fetch,
-  queue: processEmailQueue,
+  // queue: processEmailQueue, // Uncomment when Cloudflare Queues (Paid plan) is enabled
 };

@@ -26,16 +26,17 @@ new_classes = ["DocumentSession"]
 tag = "v2"
 new_classes = ["RateLimiter"]
 
-[[queues.producers]]
-binding = "NOTIFICATION_QUEUE"
-queue = "collabdocs-email-notifications"
-
-[[queues.consumers]]
-queue = "collabdocs-email-notifications"
-max_batch_size = 10
-max_batch_timeout = 5
-max_retries = 3
-dead_letter_queue = "collabdocs-email-dlq"
+# Queues (requires Cloudflare Workers Paid plan — comment out if on free plan)
+# [[queues.producers]]
+# binding = "NOTIFICATION_QUEUE"
+# queue = "collabdocs-email-notifications"
+#
+# [[queues.consumers]]
+# queue = "collabdocs-email-notifications"
+# max_batch_size = 10
+# max_batch_timeout = 5
+# max_retries = 3
+# dead_letter_queue = "collabdocs-email-dlq"
 
 # Configurações de observabilidade e logs
 [observability]
