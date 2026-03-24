@@ -1,7 +1,10 @@
 using System.Diagnostics;
+using System.Text.Json;
 using CollabDocs.Application.Commands;
 using CollabDocs.Application.DTOs;
+using CollabDocs.Domain.Events;
 using CollabDocs.Domain.Interfaces;
+using CollabDocs.Domain.Outbox;
 using MediatR;
 
 namespace CollabDocs.Application.Handlers;
@@ -9,7 +12,8 @@ namespace CollabDocs.Application.Handlers;
 public class UpdateDocumentHandler(
     IDocumentRepository documentRepository,
     ICollaboratorRepository collaboratorRepository,
-    IAuditService auditService
+    IAuditService auditService,
+    IOutboxRepository outboxRepository
 ) : IRequestHandler<UpdateDocumentCommand, DocumentDto>
 {
     public async Task<DocumentDto> Handle(UpdateDocumentCommand request, CancellationToken cancellationToken)
@@ -30,6 +34,22 @@ public class UpdateDocumentHandler(
             throw new InvalidOperationException("Document was modified by another user");
 
         document.Update(request.Content, request.Title);
+
+        // Stage outbox message atomically with the document write
+        var domainEvent = new DocumentUpdatedEvent
+        {
+            DocumentId = document.Id,
+            Title = document.Title,
+            UpdatedBy = request.UserId,
+            Version = document.Version
+        };
+        var outboxMessage = OutboxMessage.Create(
+            domainEvent.EventType,
+            JsonSerializer.Serialize(domainEvent),
+            request.IdempotencyKey);
+        await outboxRepository.AddAsync(outboxMessage, cancellationToken);
+
+        // SaveChanges inside UpdateAsync commits both document change and outbox message
         await documentRepository.UpdateAsync(document, cancellationToken);
         await auditService.LogAsync(document.Id, request.UserId, "updated",
             new { fields = new[] { request.Content is not null ? "content" : null, request.Title is not null ? "title" : null }.Where(f => f != null) });

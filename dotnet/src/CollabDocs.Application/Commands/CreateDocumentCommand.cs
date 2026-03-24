@@ -10,5 +10,6 @@ public record CreateDocumentCommand(
     string OwnerName,
     string Title,
     string Content,
-    Visibility Visibility
+    Visibility Visibility,
+    string? IdempotencyKey = null
 ) : IRequest<DocumentDto>;

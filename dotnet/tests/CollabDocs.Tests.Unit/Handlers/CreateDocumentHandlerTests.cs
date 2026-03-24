@@ -3,6 +3,7 @@ using CollabDocs.Application.Handlers;
 using CollabDocs.Domain.Entities;
 using CollabDocs.Domain.Enums;
 using CollabDocs.Domain.Interfaces;
+using CollabDocs.Domain.Outbox;
 using FluentAssertions;
 using Moq;
 using Xunit;
@@ -14,9 +15,10 @@ public class CreateDocumentHandlerTests
     private readonly Mock<IDocumentRepository> _documentRepo = new();
     private readonly Mock<IUserRepository> _userRepo = new();
     private readonly Mock<IAuditService> _audit = new();
+    private readonly Mock<IOutboxRepository> _outbox = new();
 
     private CreateDocumentHandler CreateHandler() =>
-        new(_documentRepo.Object, _userRepo.Object, _audit.Object);
+        new(_documentRepo.Object, _userRepo.Object, _audit.Object, _outbox.Object);
 
     [Fact]
     public async Task Handle_ValidCommand_ReturnsDocumentDto()
@@ -73,5 +75,20 @@ public class CreateDocumentHandlerTests
         await CreateHandler().Handle(command, CancellationToken.None);
 
         _documentRepo.Verify(r => r.AddAsync(It.IsAny<Document>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_WritesOutboxMessage()
+    {
+        var command = new CreateDocumentCommand(
+            "user-111", "d@e.com", "User D",
+            "Doc", "Content", Visibility.Public,
+            IdempotencyKey: "idem-key-1");
+
+        await CreateHandler().Handle(command, CancellationToken.None);
+
+        _outbox.Verify(o => o.AddAsync(
+            It.Is<OutboxMessage>(m => m.EventType == "document.created" && m.IdempotencyKey == "idem-key-1"),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 }

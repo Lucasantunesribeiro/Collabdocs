@@ -2,6 +2,8 @@ using System.Text;
 using CollabDocs.Application.Handlers;
 using CollabDocs.Domain.Interfaces;
 using CollabDocs.Infrastructure.Data;
+using CollabDocs.Infrastructure.Messaging;
+using CollabDocs.Infrastructure.Outbox;
 using CollabDocs.Infrastructure.Repositories;
 using CollabDocs.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -24,10 +26,17 @@ builder.Services.AddScoped<IDocumentRepository, DocumentRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<ICollaboratorRepository, CollaboratorRepository>();
 builder.Services.AddScoped<IAuditService, AuditService>();
+builder.Services.AddScoped<IOutboxRepository, OutboxRepository>();
 
 // MediatR
 builder.Services.AddMediatR(cfg =>
     cfg.RegisterServicesFromAssembly(typeof(CreateDocumentHandler).Assembly));
+
+// RabbitMQ — Outbox Publisher + Event Consumer (degrade gracefully if RabbitMQ is down)
+builder.Services.Configure<RabbitMQSettings>(
+    builder.Configuration.GetSection("RabbitMQ"));
+builder.Services.AddHostedService<OutboxPublisherService>();
+builder.Services.AddHostedService<DocumentEventConsumer>();
 
 // JWT Authentication
 var jwtSecret = builder.Configuration["Jwt:Secret"]
