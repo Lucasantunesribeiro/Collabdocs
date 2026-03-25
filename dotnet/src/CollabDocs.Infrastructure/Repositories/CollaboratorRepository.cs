@@ -29,4 +29,14 @@ public class CollaboratorRepository(AppDbContext context) : ICollaboratorReposit
             await context.SaveChangesAsync(cancellationToken);
         }
     }
+
+    public async Task DeleteByDocumentIdAsync(Guid documentId, CancellationToken cancellationToken = default)
+    {
+        var collabs = await context.DocumentCollaborators
+            .Where(dc => dc.DocumentId == documentId)
+            .ToListAsync(cancellationToken);
+        if (collabs.Count > 0)
+            context.DocumentCollaborators.RemoveRange(collabs);
+        // No SaveChangesAsync — caller commits atomically with the document deletion
+    }
 }

@@ -92,5 +92,6 @@ public class DocumentsController(ISender sender) : ControllerBase
         }
         catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
         catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (Exception ex) { return StatusCode(500, new { error = "Failed to delete document", detail = ex.Message }); }
     }
 }

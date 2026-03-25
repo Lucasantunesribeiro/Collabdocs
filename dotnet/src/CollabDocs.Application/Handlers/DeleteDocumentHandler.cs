@@ -10,6 +10,7 @@ namespace CollabDocs.Application.Handlers;
 
 public class DeleteDocumentHandler(
     IDocumentRepository documentRepository,
+    ICollaboratorRepository collaboratorRepository,
     IAuditService auditService,
     IOutboxRepository outboxRepository,
     IDocumentCacheService cacheService
@@ -23,7 +24,8 @@ public class DeleteDocumentHandler(
         if (document.OwnerId != request.UserId)
             throw new UnauthorizedAccessException("Only the owner can delete this document");
 
-        // Stage outbox message atomically with the delete
+        // Stage outbox message, collaborator removals, and document deletion —
+        // all committed atomically by SaveChanges inside DeleteAsync
         var domainEvent = new DocumentDeletedEvent
         {
             DocumentId = document.Id,
@@ -36,8 +38,8 @@ public class DeleteDocumentHandler(
             JsonSerializer.Serialize(domainEvent),
             request.IdempotencyKey);
         await outboxRepository.AddAsync(outboxMessage, cancellationToken);
+        await collaboratorRepository.DeleteByDocumentIdAsync(request.DocumentId, cancellationToken);
 
-        // SaveChanges inside DeleteAsync commits both the deletion and the outbox message
         await documentRepository.DeleteAsync(request.DocumentId, cancellationToken);
         await auditService.LogAsync(request.DocumentId, request.UserId, "deleted");
         await cacheService.InvalidateUserAsync(request.UserId, cancellationToken);
