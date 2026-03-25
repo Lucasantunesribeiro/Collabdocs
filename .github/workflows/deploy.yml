@@ -105,6 +105,10 @@ jobs:
           ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
+          if [ -z "$ECR_REGISTRY" ]; then
+            echo "ERROR: ECR_REGISTRY is empty — ECR login may have failed"
+            exit 1
+          fi
           docker build \
             -f dotnet/src/CollabDocs.API/Dockerfile \
             -t "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" \
@@ -130,11 +134,18 @@ jobs:
           role-session-name: github-actions-collabdocs-deploy-${{ github.run_id }}
 
       - name: Update Lambda function code
+        env:
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+          REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+          IMAGE_TAG: ${{ github.sha }}
         run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text --region "$REGION")
+          IMAGE_URI="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
+          echo "Deploying image: $IMAGE_URI"
           aws lambda update-function-code \
             --function-name "$LAMBDA_FUNCTION_NAME" \
-            --image-uri "${{ needs.build-and-push.outputs.image }}" \
-            --region "${{ secrets.AWS_REGION || 'us-east-1' }}"
+            --image-uri "$IMAGE_URI" \
+            --region "$REGION"
 
       - name: Wait for Lambda update to complete
         run: |

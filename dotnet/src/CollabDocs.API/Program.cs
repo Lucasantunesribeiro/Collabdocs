@@ -89,7 +89,9 @@ builder.Services.AddAuthorization();
 builder.Services.AddControllers()
     .AddJsonOptions(o =>
     {
-        o.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.SnakeCaseLower;
+        // CamelCase for input binding (JS sends expectedVersion, not expected_version)
+        // Snake_case output is handled via [JsonPropertyName] on DocumentDto
+        o.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
         o.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
     });
 
