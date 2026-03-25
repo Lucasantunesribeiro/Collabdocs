@@ -15,9 +15,15 @@ public class GetDocumentsHandlerTests
 {
     private readonly Mock<IDocumentRepository> _documentRepo = new();
     private readonly Mock<IDocumentCacheService> _cacheService = new();
+    private readonly Mock<IUserRepository> _userRepo = new();
 
-    private GetDocumentsHandler CreateHandler() =>
-        new(_documentRepo.Object, _cacheService.Object);
+    private GetDocumentsHandler CreateHandler()
+    {
+        _userRepo
+            .Setup(r => r.GetByIdsAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, User>());
+        return new(_documentRepo.Object, _cacheService.Object, _userRepo.Object);
+    }
 
     [Fact]
     public async Task Handle_ReturnsDocumentsForUser()

@@ -1,6 +1,7 @@
 using CollabDocs.Domain.Entities;
 using CollabDocs.Domain.Interfaces;
 using CollabDocs.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace CollabDocs.Infrastructure.Repositories;
 
@@ -8,6 +9,11 @@ public class UserRepository(AppDbContext context) : IUserRepository
 {
     public async Task<User?> GetByIdAsync(string id, CancellationToken cancellationToken = default)
         => await context.Users.FindAsync([id], cancellationToken);
+
+    public async Task<Dictionary<string, User>> GetByIdsAsync(IEnumerable<string> ids, CancellationToken cancellationToken = default)
+        => await context.Users
+            .Where(u => ids.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, cancellationToken);
 
     public async Task UpsertAsync(User user, CancellationToken cancellationToken = default)
     {

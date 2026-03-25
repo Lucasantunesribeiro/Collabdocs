@@ -9,5 +9,6 @@ public record DocumentDto(
     int Version,
     DateTime CreatedAt,
     DateTime UpdatedAt,
-    bool IsOwner = false
+    bool IsOwner = false,
+    string? OwnerName = null
 );

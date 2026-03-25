@@ -7,7 +7,8 @@ namespace CollabDocs.Application.Handlers;
 
 public class GetDocumentByIdHandler(
     IDocumentRepository documentRepository,
-    ICollaboratorRepository collaboratorRepository
+    ICollaboratorRepository collaboratorRepository,
+    IUserRepository userRepository
 ) : IRequestHandler<GetDocumentByIdQuery, DocumentDto>
 {
     public async Task<DocumentDto> Handle(GetDocumentByIdQuery request, CancellationToken cancellationToken)
@@ -20,10 +21,13 @@ public class GetDocumentByIdHandler(
         if (!document.CanView(request.UserId, collaborators))
             throw new UnauthorizedAccessException("Access denied");
 
+        var owner = await userRepository.GetByIdAsync(document.OwnerId, cancellationToken);
+
         return new DocumentDto(
             document.Id, document.OwnerId, document.Title, document.Content,
             document.Visibility.ToString().ToLower(), document.Version,
             document.CreatedAt, document.UpdatedAt,
-            IsOwner: document.OwnerId == request.UserId);
+            IsOwner: document.OwnerId == request.UserId,
+            OwnerName: owner?.Name);
     }
 }
