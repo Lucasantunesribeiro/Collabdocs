@@ -2,26 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { secureApiService, type Collaborator } from '@/lib/secure-api';
-import { Button } from './ui/Button';
-import { Card, CardContent } from './ui/Card';
-import { Alert } from './ui/Alert';
-import { 
-  Bold, 
-  Italic, 
-  List, 
-  ListOrdered, 
-  Quote, 
-  Code, 
-  Link, 
-  Image, 
-  Save,
-  Users,
-  Clock,
-  FileText,
-  CheckCircle,
-  AlertCircle,
-  Loader2
-} from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ShareModal } from './ShareModal';
 
 interface CollaborativeEditorProps {
   documentId: string;
@@ -39,7 +21,6 @@ function useCollaboration(
 ) {
   const [connectedUsers, setConnectedUsers] = useState<{ userId: string; userName: string }[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
-  // Keep a stable ref to the callback so we don't restart the WebSocket when it changes
   const onRemoteUpdateRef = useRef(onRemoteUpdate);
   useEffect(() => { onRemoteUpdateRef.current = onRemoteUpdate; });
 
@@ -56,24 +37,15 @@ function useCollaboration(
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
-        if (msg.type === 'connected') {
-          setConnectedUsers(msg.users);
-        } else if (msg.type === 'join') {
-          setConnectedUsers(prev => [...prev, { userId: msg.userId, userName: msg.userName }]);
-        } else if (msg.type === 'leave') {
-          setConnectedUsers(prev => prev.filter(u => u.userId !== msg.userId));
-        } else if (msg.type === 'update' && typeof msg.content === 'string') {
-          // Apply remote content update without triggering the local dirty/broadcast cycle
-          onRemoteUpdateRef.current(msg.content);
-        }
-      } catch {
-        // ignore malformed messages
-      }
+        if (msg.type === 'connected') setConnectedUsers(msg.users);
+        else if (msg.type === 'join') setConnectedUsers(prev => [...prev, { userId: msg.userId, userName: msg.userName }]);
+        else if (msg.type === 'leave') setConnectedUsers(prev => prev.filter(u => u.userId !== msg.userId));
+        else if (msg.type === 'update' && typeof msg.content === 'string') onRemoteUpdateRef.current(msg.content);
+      } catch { /* ignore malformed messages */ }
     };
 
     ws.onerror = () => {}; // silent fail for demo
     wsRef.current = ws;
-
     return () => ws.close();
   }, [documentId, token]);
 
@@ -87,6 +59,7 @@ function useCollaboration(
 }
 
 export function CollaborativeEditor({ documentId, initialContent, session }: CollaborativeEditorProps) {
+  const router = useRouter();
   const [content, setContent] = useState(initialContent);
   const [isTyping, setIsTyping] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -95,23 +68,18 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
   const [isLoadingCollaborators, setIsLoadingCollaborators] = useState(true);
+  const [showShareModal, setShowShareModal] = useState(false);
 
-  // Real-time collaboration via WebSocket (JWT passed as ?token= query param)
-  // onRemoteUpdate applies incoming content from other users without triggering
-  // the local dirty flag or re-broadcasting the change back.
   const { connectedUsers, broadcast } = useCollaboration(
     documentId,
     session?.sessionToken || '',
     (remoteContent) => setContent(remoteContent)
   );
 
-  // Salvamento automático
+  // Auto-save: trigger 2s after last keystroke when document is dirty
   useEffect(() => {
     if (isDirty && !isTyping) {
-      const timer = setTimeout(() => {
-        handleAutoSave();
-      }, 2000); // Salvar automaticamente após 2 segundos sem digitação
-
+      const timer = setTimeout(() => handleAutoSave(), 2000);
       return () => clearTimeout(timer);
     }
   }, [content, isTyping, isDirty, documentId]);
@@ -121,35 +89,23 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
     setContent(newContent);
     setIsTyping(true);
     setIsDirty(true);
-
-    // Broadcast content change to other collaborators in real-time
     broadcast(newContent);
-
-    // Simular indicador de digitação
     setTimeout(() => setIsTyping(false), 1000);
   };
 
   const handleAutoSave = async () => {
     if (!isDirty || !session) return;
-    
     setIsSaving(true);
     setSaveStatus('saving');
-    
     try {
-      // Salvar na API
       await secureApiService.updateDocument(documentId, { content }, session);
-      
       setLastSaved(new Date());
       setIsDirty(false);
       setSaveStatus('saved');
-      
-      // Salvar no localStorage como backup
       localStorage.setItem(`collabdocs_document_${documentId}_content`, content);
       localStorage.setItem(`collabdocs_document_${documentId}_last_saved`, new Date().toISOString());
-      
-    } catch (error) {
+    } catch {
       setSaveStatus('error');
-      console.error('Erro ao salvar automaticamente:', error);
     } finally {
       setIsSaving(false);
     }
@@ -159,40 +115,29 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
     if (!session) return;
     setIsSaving(true);
     setSaveStatus('saving');
-    
     try {
-      // Salvar na API
       await secureApiService.updateDocument(documentId, { content }, session);
-      
       setLastSaved(new Date());
       setIsDirty(false);
       setSaveStatus('saved');
-      
-      // Salvar no localStorage como backup
       localStorage.setItem(`collabdocs_document_${documentId}_content`, content);
       localStorage.setItem(`collabdocs_document_${documentId}_last_saved`, new Date().toISOString());
-      
-      // Mostrar feedback visual
       setTimeout(() => setSaveStatus('saved'), 2000);
-      
-    } catch (error) {
+    } catch {
       setSaveStatus('error');
-      console.error('Erro ao salvar:', error);
     } finally {
       setIsSaving(false);
     }
   };
 
-  // Carregar colaboradores
   const loadCollaborators = async () => {
     if (!session) return;
     try {
       setIsLoadingCollaborators(true);
       const response = await secureApiService.getDocumentCollaborators(documentId, session);
       setCollaborators(response.collaborators || []);
-    } catch (error) {
-      console.error('Erro ao carregar colaboradores:', error);
-      // Fallback: minimal collaborator entry for the current user (only if session is available)
+    } catch {
+      // Fallback: minimal collaborator entry for the current user
       if (session?.user) {
         setCollaborators([{
           id: `user-${session.user.id}`,
@@ -209,302 +154,221 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
     }
   };
 
-  // Carregar conteúdo salvo ao inicializar
+  // Restore from localStorage on mount
   useEffect(() => {
     const savedContent = localStorage.getItem(`collabdocs_document_${documentId}_content`);
     const savedLastSaved = localStorage.getItem(`collabdocs_document_${documentId}_last_saved`);
-    
-    if (savedContent) {
-      setContent(savedContent);
-      setIsDirty(false);
-    }
-    
-    if (savedLastSaved) {
-      setLastSaved(new Date(savedLastSaved));
-    }
+    if (savedContent) { setContent(savedContent); setIsDirty(false); }
+    if (savedLastSaved) setLastSaved(new Date(savedLastSaved));
   }, [documentId]);
 
-  // Carregar colaboradores ao inicializar
   useEffect(() => {
-    if (session && documentId) {
-      loadCollaborators();
-    }
+    if (session && documentId) loadCollaborators();
   }, [session, documentId]);
 
   const formatTimeAgo = (date: Date) => {
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
+    const diffMins = Math.floor((Date.now() - date.getTime()) / 60000);
     if (diffMins < 1) return 'agora mesmo';
-    if (diffMins < 60) return `há ${diffMins} minuto${diffMins > 1 ? 's' : ''}`;
-    if (diffHours < 24) return `há ${diffHours} hora${diffHours > 1 ? 's' : ''}`;
-    return `há ${diffDays} dia${diffDays > 1 ? 's' : ''}`;
+    if (diffMins < 60) return `há ${diffMins}min`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `há ${diffHours}h`;
+    return `há ${Math.floor(diffHours / 24)}d`;
   };
 
-  const getSaveStatusIcon = () => {
-    switch (saveStatus) {
-      case 'saved': return <CheckCircle className="w-4 h-4" />;
-      case 'saving': return <Loader2 className="w-4 h-4 animate-spin" />;
-      case 'error': return <AlertCircle className="w-4 h-4" />;
-      default: return <FileText className="w-4 h-4" />;
-    }
-  };
-
-  const getSaveStatusColor = () => {
-    switch (saveStatus) {
-      case 'saved': return 'text-success-600';
-      case 'saving': return 'text-primary-600';
-      case 'error': return 'text-error-600';
-      default: return 'text-text-600';
-    }
-  };
-
-  const getSaveStatusText = () => {
-    switch (saveStatus) {
-      case 'saved': return 'Salvo';
-      case 'saving': return 'Salvando...';
-      case 'error': return 'Erro ao salvar';
-      default: return 'Não salvo';
-    }
-  };
+  const saveStatusConfig = {
+    saved: { icon: 'check_circle', color: 'text-success', text: 'Salvo' },
+    saving: { icon: 'sync', color: 'text-primary', text: 'Salvando...' },
+    error: { icon: 'error', color: 'text-error', text: 'Erro ao salvar' },
+  }[saveStatus];
 
   return (
-    <div className="min-h-screen bg-background-50">
-      {/* Toolbar Fixa */}
-      <div className="sticky top-0 z-40 bg-white border-b border-text-200 shadow-soft">
-        <div className="max-w-7xl mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
-            {/* Ferramentas de Formatação */}
-            <div className="flex items-center gap-1">
-              <Button variant="ghost" size="sm" icon={Bold}>
-                {' '}
-              </Button>
-              <Button variant="ghost" size="sm" icon={Italic}>
-                {' '}
-              </Button>
-              <div className="w-px h-6 bg-text-200 mx-2"></div>
-              <Button variant="ghost" size="sm" icon={List}>
-                {' '}
-              </Button>
-              <Button variant="ghost" size="sm" icon={ListOrdered}>
-                {' '}
-              </Button>
-              <div className="w-px h-6 bg-text-200 mx-2"></div>
-              <Button variant="ghost" size="sm" icon={Quote}>
-                {' '}
-              </Button>
-              <Button variant="ghost" size="sm" icon={Code}>
-                {' '}
-              </Button>
-              <Button variant="ghost" size="sm" icon={Link}>
-                {' '}
-              </Button>
-              <Button variant="ghost" size="sm" icon={Image}>
-                {' '}
-              </Button>
-            </div>
+    <div className="min-h-screen bg-surface flex flex-col">
+      {/* Editor Header */}
+      <header className="sticky top-0 z-40 glass border-b border-outline-variant px-4 md:px-6 py-3">
+        <div className="flex items-center gap-3 max-w-7xl mx-auto">
+          {/* Back */}
+          <button
+            onClick={() => router.push('/dashboard')}
+            className="p-2 rounded-xl text-on-surface-variant hover:bg-surface-high transition-colors flex-shrink-0"
+          >
+            <span className="material-symbols-outlined">arrow_back</span>
+          </button>
 
-            {/* Status e Ações */}
-            <div className="flex items-center gap-4">
-              {/* Indicador de digitação */}
-              {isTyping && (
-                <div className="flex items-center gap-2 text-sm text-text-500">
-                  <div className="flex space-x-1">
-                    <div className="w-2 h-2 bg-primary-500 rounded-full animate-bounce"></div>
-                    <div className="w-2 h-2 bg-primary-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                    <div className="w-2 h-2 bg-primary-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                  </div>
-                  <span>Digitando...</span>
-                </div>
-              )}
-
-              {/* Status de salvamento */}
-              <div className={`flex items-center gap-2 text-sm ${getSaveStatusColor()}`}>
-                {getSaveStatusIcon()}
-                <span>{getSaveStatusText()}</span>
-              </div>
-
-              {/* Botão de salvar manual */}
-              <Button
-                onClick={handleManualSave}
-                disabled={isSaving || !isDirty}
-                variant={isDirty && !isSaving ? 'primary' : 'secondary'}
-                size="sm"
-                icon={Save}
+          {/* Title + save status */}
+          <div className="flex-1 min-w-0">
+            <p className="font-display font-semibold text-sm text-on-surface truncate">
+              {documentId === 'demo' ? 'Documento Demo' : `Documento ${documentId.slice(0, 8)}...`}
+            </p>
+            <div className={`flex items-center gap-1 text-xs ${saveStatusConfig.color}`}>
+              <span
+                className="material-symbols-outlined"
+                style={{
+                  fontSize: '12px',
+                  animation: saveStatus === 'saving' ? 'spin 1s linear infinite' : 'none'
+                }}
               >
-                {isSaving ? 'Salvando...' : 'Salvar'}
-              </Button>
+                {saveStatusConfig.icon}
+              </span>
+              {saveStatusConfig.text}
+              {saveStatus === 'saved' && (
+                <span className="text-on-surface-variant"> · {formatTimeAgo(lastSaved)}</span>
+              )}
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* Área de Edição */}
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          {/* Editor Principal */}
-          <div className="lg:col-span-3">
-            <Card>
-              <CardContent className="p-0">
-                <textarea
-                  value={content}
-                  onChange={handleContentChange}
-                  className="w-full min-h-[calc(100vh-300px)] p-8 bg-white border-0 rounded-xl focus:outline-none focus:ring-0 resize-none font-mono text-text-800 leading-relaxed text-base"
-                  placeholder="Comece a digitar seu documento..."
-                />
-              </CardContent>
-            </Card>
+          {/* Connected users strip */}
+          {connectedUsers.length > 0 && (
+            <div className="hidden sm:flex items-center gap-1">
+              {connectedUsers.slice(0, 3).map((u) => (
+                <div
+                  key={u.userId}
+                  className="w-7 h-7 rounded-full bg-primary-container border-2 border-surface flex items-center justify-center"
+                  title={u.userName}
+                >
+                  <span className="text-xs font-semibold text-secondary">
+                    {u.userName.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+              ))}
+              {connectedUsers.length > 3 && (
+                <span className="text-xs text-on-surface-variant ml-1">+{connectedUsers.length - 3}</span>
+              )}
+            </div>
+          )}
+
+          {/* Format toolbar (desktop) */}
+          <div className="hidden md:flex items-center gap-1 px-2 py-1 glass rounded-xl">
+            {['format_bold', 'format_italic', 'format_list_bulleted', 'link'].map((icon) => (
+              <button
+                key={icon}
+                className="p-1.5 rounded-lg text-on-surface-variant hover:bg-surface-high hover:text-on-surface transition-colors"
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>{icon}</span>
+              </button>
+            ))}
           </div>
 
-          {/* Sidebar de Colaboração */}
-          <div className="lg:col-span-1 space-y-6">
-            {/* Colaboradores Online */}
-            <Card>
-              <CardContent>
-                <div className="flex items-center gap-2 mb-4">
-                  <Users className="w-5 h-5 text-text-600" />
-                  <h4 className="font-medium text-text-900">Colaboradores</h4>
-                  {connectedUsers.length > 0 && (
-                    <span className="ml-auto text-xs font-medium text-success-600 bg-success-50 px-2 py-0.5 rounded-full">
-                      {connectedUsers.length + 1} online
-                    </span>
-                  )}
-                  {isLoadingCollaborators && (
-                    <div className="w-4 h-4 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
-                  )}
-                </div>
-                <div className="space-y-3">
-                  {collaborators.length === 0 ? (
-                    <div className="text-center py-4">
-                      <p className="text-sm text-text-500">Carregando colaboradores...</p>
-                    </div>
-                  ) : (
-                    collaborators.map((collaborator) => {
-                      const isCurrentUser = session?.user && (collaborator.user_id === session.user.id || collaborator.user_email === session.user.email);
-                      const isOwner = collaborator.permission === 'owner';
-                      return (
-                        <div key={collaborator.id} className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                            isCurrentUser ? 'bg-primary-100' : isOwner ? 'bg-warning-100' : 'bg-success-100'
-                          }`}>
-                            <span className={`text-sm font-medium ${
-                              isCurrentUser ? 'text-primary-600' : isOwner ? 'text-warning-600' : 'text-success-600'
-                            }`}>
-                              {collaborator.user_email.charAt(0).toUpperCase()}
-                            </span>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-text-900 truncate">
-                              {collaborator.user_email}
-                              {isCurrentUser && <span className="ml-2 text-xs text-primary-600">(Você)</span>}
-                              {isOwner && <span className="ml-2 text-xs text-warning-600">(Proprietário)</span>}
-                            </p>
-                            <p className="text-xs text-text-500 capitalize">{collaborator.permission}</p>
-                          </div>
+          {/* Share */}
+          <button
+            onClick={() => setShowShareModal(true)}
+            className="p-2 rounded-xl border border-outline text-on-surface-variant hover:bg-surface-high hover:text-on-surface transition-colors flex-shrink-0"
+            title="Compartilhar"
+          >
+            <span className="material-symbols-outlined">share</span>
+          </button>
+
+          {/* Save */}
+          <button
+            onClick={handleManualSave}
+            disabled={isSaving || !isDirty}
+            className={`btn-primary text-sm px-4 py-2 flex items-center gap-2 flex-shrink-0 ${(!isDirty || isSaving) ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <span className="material-symbols-outlined text-lg">save</span>
+            <span className="hidden sm:inline">Salvar</span>
+          </button>
+        </div>
+      </header>
+
+      {/* Editor body */}
+      <div className="flex-1 flex max-w-7xl mx-auto w-full">
+        {/* Main textarea */}
+        <div className="flex-1 flex flex-col">
+          {/* Mobile format toolbar */}
+          <div className="md:hidden flex items-center gap-1 px-4 py-2 border-b border-outline-variant">
+            {['format_bold', 'format_italic', 'format_list_bulleted', 'link', 'format_quote'].map((icon) => (
+              <button
+                key={icon}
+                className="p-2 rounded-lg text-on-surface-variant hover:bg-surface-high transition-colors"
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>{icon}</span>
+              </button>
+            ))}
+          </div>
+
+          <textarea
+            value={content}
+            onChange={handleContentChange}
+            className="flex-1 w-full p-6 md:p-10 bg-transparent text-on-surface font-mono text-base leading-relaxed resize-none focus:outline-none placeholder:text-on-surface-variant"
+            placeholder="Comece a escrever seu documento..."
+            style={{ minHeight: 'calc(100vh - 200px)' }}
+          />
+
+          {/* Bottom status bar */}
+          <div className="px-6 md:px-10 py-3 border-t border-outline-variant flex items-center gap-4 text-xs text-on-surface-variant">
+            <span>{content.length} caracteres</span>
+            <span>{content.trim().split(/\s+/).filter(Boolean).length} palavras</span>
+            <span>{content.split('\n').length} linhas</span>
+            {isTyping && (
+              <span className="flex items-center gap-1 text-primary">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                Digitando...
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Right sidebar (desktop) */}
+        <aside className="hidden lg:flex flex-col w-72 border-l border-outline-variant p-4 gap-4">
+          <div>
+            <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-3">
+              Colaboradores ({collaborators.length})
+            </p>
+            {isLoadingCollaborators ? (
+              <div className="space-y-2">
+                {[1, 2].map(i => <div key={i} className="h-10 rounded-xl bg-surface-container animate-pulse" />)}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {collaborators.map((c) => {
+                  const isCurrentUser = session?.user && (
+                    c.user_id === session.user.id || c.user_email === session.user.email
+                  );
+                  const isOnline = connectedUsers.some(u => u.userId === c.user_id);
+                  return (
+                    <div key={c.id} className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-surface-container transition-colors">
+                      <div className="relative">
+                        <div className="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center">
+                          <span className="text-xs font-semibold text-secondary">
+                            {c.user_email.charAt(0).toUpperCase()}
+                          </span>
                         </div>
-                      );
-                    })
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Estatísticas do Documento */}
-            <Card>
-              <CardContent>
-                <div className="flex items-center gap-2 mb-4">
-                  <FileText className="w-5 h-5 text-text-600" />
-                  <h4 className="font-medium text-text-900">Estatísticas</h4>
-                </div>
-                <div className="space-y-3 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-text-600">Caracteres:</span>
-                    <span className="font-medium text-text-900">{content.length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-text-600">Palavras:</span>
-                    <span className="font-medium text-text-900">{content.split(' ').length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-text-600">Linhas:</span>
-                    <span className="font-medium text-text-900">{content.split('\n').length}</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Status de Salvamento */}
-            <Card>
-              <CardContent>
-                <div className="flex items-center gap-2 mb-4">
-                  <Clock className="w-5 h-5 text-text-600" />
-                  <h4 className="font-medium text-text-900">Status</h4>
-                </div>
-                <div className="space-y-3 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-text-600">Status:</span>
-                    <span className={`font-medium ${isDirty ? 'text-warning-600' : 'text-success-600'}`}>
-                      {isDirty ? 'Não salvo' : 'Salvo'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-text-600">Último salvamento:</span>
-                    <span className="font-medium text-text-900">{formatTimeAgo(lastSaved)}</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                        {(isOnline || isCurrentUser) && (
+                          <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-success border-2 border-surface" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-on-surface truncate">
+                          {isCurrentUser ? 'Você' : c.user_email}
+                        </p>
+                        <p className="text-xs text-on-surface-variant capitalize">{c.permission}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-        </div>
-      </div>
 
-      {/* Footer do Editor */}
-      <div className="bg-white border-t border-text-200 py-4">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="flex items-center justify-between text-sm text-text-600">
-            <div className="flex items-center gap-6">
-              <span className="flex items-center gap-2">
-                <FileText className="w-4 h-4" />
-                {content.length} caracteres
-              </span>
-              <span className="flex items-center gap-2">
-                <Users className="w-4 h-4" />
-                {content.split(' ').length} palavras
-              </span>
-              <span className="flex items-center gap-2">
-                <Clock className="w-4 h-4" />
-                {content.split('\n').length} linhas
-              </span>
-            </div>
-
-            <div className="flex items-center gap-6">
-              <span className={`flex items-center gap-2 ${isDirty ? 'text-warning-600' : 'text-success-600'}`}>
-                {isDirty ? <AlertCircle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
-                {isDirty ? 'Não salvo' : 'Salvo'}
-              </span>
-              <span className="flex items-center gap-2">
-                <Clock className="w-4 h-4" />
-                Último salvamento: {formatTimeAgo(lastSaved)}
-              </span>
-            </div>
+          <div className="mt-auto">
+            <button
+              onClick={() => setShowShareModal(true)}
+              className="w-full btn-primary text-sm py-2.5 flex items-center justify-center gap-2"
+            >
+              <span className="material-symbols-outlined text-lg">person_add</span>
+              Adicionar Colaborador
+            </button>
           </div>
-        </div>
+        </aside>
       </div>
 
-      {/* Dicas de Colaboração */}
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        <Alert type="info" title="Dicas para Colaboração Eficiente">
-          <ul className="text-sm space-y-1 mt-2">
-            <li>• Use o botão "Salvar" para persistir suas alterações</li>
-            <li>• O salvamento automático acontece após 2 segundos sem digitação</li>
-            <li>• Comunique-se com sua equipe sobre mudanças significativas</li>
-            <li>• Use Markdown para formatação avançada</li>
-          </ul>
-        </Alert>
-      </div>
+      {/* Share Modal */}
+      {showShareModal && (
+        <ShareModal
+          documentId={documentId}
+          session={session}
+          onClose={() => setShowShareModal(false)}
+        />
+      )}
     </div>
   );
 }

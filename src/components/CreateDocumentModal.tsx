@@ -1,40 +1,23 @@
 'use client';
 
 import { useState } from 'react';
-import { Button } from './ui/Button';
-import { Input } from './ui/Input';
-import { Card, CardContent, CardHeader } from './ui/Card';
-import { Alert } from './ui/Alert';
-import { 
-  FileText,
-  Plus,
-  Lock, 
-  Globe, 
-  X
-} from 'lucide-react';
 
 interface CreateDocumentModalProps {
   onClose: () => void;
-  onCreate: (title: string, visibility: 'private' | 'public') => void;
+  onCreate: (title: string, visibility: 'private' | 'public') => Promise<void> | void;
 }
 
 export function CreateDocumentModal({ onClose, onCreate }: CreateDocumentModalProps) {
   const [title, setTitle] = useState('');
   const [visibility, setVisibility] = useState<'private' | 'public'>('public');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errors, setErrors] = useState<{ title?: string }>({});
+  const [titleError, setTitleError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Validação
-    const newErrors: { title?: string } = {};
+
     if (!title.trim()) {
-      newErrors.title = 'O título é obrigatório';
-    }
-    
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
+      setTitleError('O título é obrigatório');
       return;
     }
 
@@ -50,150 +33,177 @@ export function CreateDocumentModal({ onClose, onCreate }: CreateDocumentModalPr
   };
 
   const handleClose = () => {
-    if (!isSubmitting) {
-      onClose();
-    }
+    if (!isSubmitting) onClose();
   };
 
-  return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
-      <Card className="max-w-md w-full mx-4 animate-slide-up">
-        {/* Header */}
-        <CardHeader className="pb-4">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center">
-              <Plus className="w-6 h-6 text-primary-600" />
-            </div>
-            <div>
-              <h3 className="text-2xl font-semibold text-text-900">
-                Novo Documento
-              </h3>
-              <p className="text-text-600">
-                Crie um documento colaborativo
-              </p>
-            </div>
+  const modalContent = (
+    <div className="flex flex-col gap-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-primary-container flex items-center justify-center">
+            <span
+              className="material-symbols-outlined text-secondary text-xl"
+              style={{ fontVariationSettings: "'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20" }}
+            >
+              add
+            </span>
           </div>
-        </CardHeader>
+          <div>
+            <h3 className="font-display font-bold text-lg text-on-surface">Novo Documento</h3>
+            <p className="text-xs text-on-surface-variant">Crie um documento colaborativo</p>
+          </div>
+        </div>
+        <button
+          onClick={handleClose}
+          className="p-2 rounded-xl text-on-surface-variant hover:bg-surface-high transition-colors"
+          disabled={isSubmitting}
+        >
+          <span className="material-symbols-outlined">close</span>
+        </button>
+      </div>
 
-        {/* Form */}
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Título */}
-            <Input
-              label="Título do Documento"
-              id="title"
+      {/* Form */}
+      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+        {/* Title input */}
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="doc-title" className="text-sm font-medium text-on-surface-variant">
+            Título do Documento
+          </label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-on-surface-variant text-xl">
+              description
+            </span>
+            <input
+              id="doc-title"
+              type="text"
               value={title}
               onChange={(e) => {
                 setTitle(e.target.value);
-                if (errors.title) setErrors({ ...errors, title: undefined });
+                if (titleError) setTitleError(null);
               }}
               placeholder="Digite o título do documento..."
               disabled={isSubmitting}
-              error={errors.title}
-              icon={FileText}
+              className={`w-full bg-surface-container border rounded-xl pl-10 pr-4 py-2.5 text-sm text-on-surface placeholder:text-on-surface-variant focus:outline-none focus:border-primary transition-colors ${
+                titleError ? 'border-error' : 'border-outline-variant'
+              }`}
             />
+          </div>
+          {titleError && (
+            <p className="text-xs text-error flex items-center gap-1">
+              <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>error</span>
+              {titleError}
+            </p>
+          )}
+        </div>
 
-            {/* Visibilidade */}
-            <div>
-              <label className="block text-sm font-semibold text-text-700 mb-3">
-                Visibilidade
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setVisibility('private')}
-                  className={`p-4 rounded-lg border-2 transition-all duration-200 flex flex-col items-center gap-2 group ${
-                    visibility === 'private'
-                      ? 'border-warning-500 bg-warning-50 shadow-medium'
-                      : 'border-text-200 bg-white hover:border-text-300 hover:shadow-soft'
-                  }`}
-                >
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-200 ${
-                    visibility === 'private'
-                      ? 'bg-warning-500 text-white shadow-soft'
-                      : 'bg-text-100 text-text-600 group-hover:bg-warning-100 group-hover:text-warning-600'
-                  }`}>
-                    <Lock className="w-5 h-5" />
-                  </div>
-                  <div className="text-center">
-                    <div className={`font-semibold transition-colors duration-200 ${
-                      visibility === 'private' ? 'text-warning-700' : 'text-text-700'
-                    }`}>
-                      Privado
-                    </div>
-                    <div className={`text-xs transition-colors duration-200 ${
-                      visibility === 'private' ? 'text-warning-600' : 'text-text-500'
-                    }`}>
-                      Apenas você
-                    </div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setVisibility('public')}
-                  className={`p-4 rounded-lg border-2 transition-all duration-200 flex flex-col items-center gap-2 group ${
-                    visibility === 'public'
-                      ? 'border-success-500 bg-success-50 shadow-medium'
-                      : 'border-text-200 bg-white hover:border-text-300 hover:shadow-soft'
-                  }`}
-                >
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-200 ${
-                    visibility === 'public'
-                      ? 'bg-success-500 text-white shadow-soft'
-                      : 'bg-text-100 text-text-600 group-hover:bg-success-100 group-hover:text-success-600'
-                  }`}>
-                    <Globe className="w-5 h-5" />
-                  </div>
-                  <div className="text-center">
-                    <div className={`font-semibold transition-colors duration-200 ${
-                      visibility === 'public' ? 'text-success-700' : 'text-text-700'
-                    }`}>
-                      Público
-                    </div>
-                    <div className={`text-xs transition-colors duration-200 ${
-                      visibility === 'public' ? 'text-success-600' : 'text-text-500'
-                    }`}>
-                      Qualquer pessoa
-                    </div>
-                  </div>
-                </button>
+        {/* Visibility */}
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-medium text-on-surface-variant">Visibilidade</label>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setVisibility('private')}
+              className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${
+                visibility === 'private'
+                  ? 'border-secondary bg-secondary-container'
+                  : 'border-outline-variant bg-surface-container hover:border-outline'
+              }`}
+            >
+              <span
+                className={`material-symbols-outlined text-2xl ${visibility === 'private' ? 'text-secondary' : 'text-on-surface-variant'}`}
+                style={{ fontVariationSettings: visibility === 'private' ? "'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24" : "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24" }}
+              >
+                lock
+              </span>
+              <div className="text-center">
+                <p className={`text-sm font-semibold font-display ${visibility === 'private' ? 'text-secondary' : 'text-on-surface'}`}>
+                  Privado
+                </p>
+                <p className="text-xs text-on-surface-variant">Apenas você</p>
               </div>
-            </div>
+            </button>
 
-            {/* Dicas */}
-            <Alert type="info" title="Dica">
-              {visibility === 'private' 
-                ? 'Documentos privados são visíveis apenas para você e colaboradores convidados.'
-                : 'Documentos públicos podem ser visualizados por qualquer pessoa com o link.'
-              }
-            </Alert>
+            <button
+              type="button"
+              onClick={() => setVisibility('public')}
+              className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${
+                visibility === 'public'
+                  ? 'border-primary bg-primary-container'
+                  : 'border-outline-variant bg-surface-container hover:border-outline'
+              }`}
+            >
+              <span
+                className={`material-symbols-outlined text-2xl ${visibility === 'public' ? 'text-secondary' : 'text-on-surface-variant'}`}
+                style={{ fontVariationSettings: visibility === 'public' ? "'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24" : "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24" }}
+              >
+                public
+              </span>
+              <div className="text-center">
+                <p className={`text-sm font-semibold font-display ${visibility === 'public' ? 'text-secondary' : 'text-on-surface'}`}>
+                  Público
+                </p>
+                <p className="text-xs text-on-surface-variant">Qualquer pessoa</p>
+              </div>
+            </button>
+          </div>
+        </div>
 
-            {/* Actions */}
-            <div className="flex gap-3 pt-4">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={handleClose}
-                disabled={isSubmitting}
-                className="flex-1"
-              >
-                Cancelar
-              </Button>
-              
-              <Button
-                type="submit"
-                disabled={isSubmitting || !title.trim()}
-                isLoading={isSubmitting}
-                icon={Plus}
-                className="flex-1"
-              >
-                {isSubmitting ? 'Criando...' : 'Criar Documento'}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+        {/* Hint */}
+        <div className="flex items-start gap-2 p-3 rounded-xl bg-surface-container border border-outline-variant">
+          <span className="material-symbols-outlined text-on-surface-variant text-lg flex-shrink-0 mt-0.5">info</span>
+          <p className="text-xs text-on-surface-variant leading-relaxed">
+            {visibility === 'private'
+              ? 'Documentos privados são visíveis apenas para você e colaboradores convidados.'
+              : 'Documentos públicos podem ser visualizados por qualquer pessoa com o link.'}
+          </p>
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-3 pt-1">
+          <button
+            type="button"
+            onClick={handleClose}
+            disabled={isSubmitting}
+            className="flex-1 px-4 py-2.5 rounded-xl border border-outline text-on-surface-variant hover:bg-surface-high hover:text-on-surface transition-colors text-sm font-medium disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting || !title.trim()}
+            className="flex-1 btn-primary text-sm py-2.5 flex items-center justify-center gap-2"
+          >
+            {isSubmitting ? (
+              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <span className="material-symbols-outlined text-lg">add</span>
+            )}
+            {isSubmitting ? 'Criando...' : 'Criar Documento'}
+          </button>
+        </div>
+      </form>
     </div>
+  );
+
+  return (
+    <>
+      {/* Desktop modal */}
+      <div className="hidden md:flex fixed inset-0 z-50 items-center justify-center">
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={handleClose} />
+        <div className="relative glass rounded-3xl p-6 w-full max-w-md animate-fade-in">
+          {modalContent}
+        </div>
+      </div>
+
+      {/* Mobile bottom sheet */}
+      <div className="md:hidden fixed inset-0 z-50 flex items-end">
+        <div className="absolute inset-0 bg-black/60" onClick={handleClose} />
+        <div className="relative w-full bg-surface-low rounded-t-3xl p-6 max-h-[90vh] overflow-y-auto animate-sheet-up">
+          <div className="w-12 h-1 rounded-full bg-outline-variant mx-auto mb-4" />
+          {modalContent}
+        </div>
+      </div>
+    </>
   );
 }
