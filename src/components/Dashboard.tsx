@@ -19,6 +19,7 @@ export default function Dashboard() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [activeNav, setActiveNav] = useState<NavItem>('all')
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
 
   useEffect(() => {
     if (session) loadDocuments()
@@ -64,10 +65,13 @@ export default function Dashboard() {
   }
 
   const filteredDocs = documents.filter((doc) => {
-    if (activeNav === 'mine') return doc.is_owner
-    if (activeNav === 'public') return doc.visibility === 'public'
-    if (activeNav === 'shared') return !doc.is_owner
-    return true
+    const matchesNav =
+      activeNav === 'mine'   ? doc.is_owner :
+      activeNav === 'public' ? doc.visibility === 'public' :
+      activeNav === 'shared' ? !doc.is_owner :
+      true
+    const matchesSearch = doc.title.toLowerCase().includes(searchQuery.toLowerCase())
+    return matchesNav && matchesSearch
   })
 
   const navItems = [
@@ -167,7 +171,13 @@ export default function Dashboard() {
             </button>
             <div className="hidden sm:flex items-center gap-2 bg-surface-container rounded-xl px-4 py-2 border border-outline-variant w-64">
               <span className="material-symbols-outlined text-on-surface-variant text-xl">search</span>
-              <span className="text-sm text-on-surface-variant">Buscar documentos...</span>
+              <input
+                type="text"
+                placeholder="Buscar documentos..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="bg-transparent text-sm text-on-surface placeholder-on-surface-variant outline-none w-full"
+              />
             </div>
           </div>
           <button
