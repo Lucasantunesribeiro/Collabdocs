@@ -3,7 +3,7 @@
   "framework": "nextjs",
   "env": {
     "NEXT_PUBLIC_API_URL": "https://collab-docs.collabdocs.workers.dev/api",
-    "NEXT_PUBLIC_DOTNET_API_URL": "https://your-dotnet-api.example.com/api"
+    "DOTNET_API_URL": "https://your-alb.us-east-1.elb.amazonaws.com/api"
   },
   "functions": {
     "src/app/api/**/*.ts": {

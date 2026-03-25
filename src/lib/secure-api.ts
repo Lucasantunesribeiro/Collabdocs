@@ -39,15 +39,18 @@ export interface UpdateDocumentRequest {
 /**
  * Resolves the .NET API base URL.
  *
- * Priority:
- *  1. NEXT_PUBLIC_DOTNET_API_URL — explicit override (Vercel / Docker)
- *  2. http://localhost:5000/api   — local development default
+ * All document CRUD is proxied through the Next.js API route at /api/dotnet,
+ * which forwards requests server-side to DOTNET_API_URL. This avoids exposing
+ * the backend URL in the client bundle and prevents localhost:5000 fallbacks
+ * in production.
  */
 function resolveDotnetApiUrl(): string {
-  if (process.env.NEXT_PUBLIC_DOTNET_API_URL) {
-    return process.env.NEXT_PUBLIC_DOTNET_API_URL
+  // In the browser / on Vercel: use the local Next.js proxy route.
+  if (typeof window !== 'undefined') {
+    return '/api/dotnet'
   }
-  return 'http://localhost:5000/api'
+  // Server-side (SSR, API routes): call the .NET API directly.
+  return process.env.DOTNET_API_URL || 'http://localhost:5000/api'
 }
 
 class SecureApiService {
