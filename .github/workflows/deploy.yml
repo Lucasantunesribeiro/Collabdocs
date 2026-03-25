@@ -145,7 +145,7 @@ jobs:
             --region "${{ secrets.AWS_REGION || 'us-east-1' }}"
           echo "Lambda update complete."
 
-      - name: Verify health endpoint
+      - name: Verify health endpoint (cold start may take ~10s)
         run: |
           FUNCTION_URL="https://gexxy5wfog4drgronvtfs7re4a0mcopr.lambda-url.us-east-1.on.aws"
           echo "Checking health at $FUNCTION_URL/health ..."
