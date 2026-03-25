@@ -32,6 +32,7 @@ public class AddCollaboratorHandler(
         await collaboratorRepository.AddAsync(collaborator, cancellationToken);
 
         return new CollaboratorDto(
+            collaborator.Id,
             collaborator.DocumentId,
             collaborator.UserId,
             collaborator.UserEmail,

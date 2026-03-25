@@ -17,7 +17,6 @@ public class GetCollaboratorsHandler(
         var document = await documentRepository.GetByIdAsync(request.DocumentId, cancellationToken)
             ?? throw new KeyNotFoundException($"Document {request.DocumentId} not found");
 
-        // Only owner or existing collaborators may list collaborators
         var isOwner = document.OwnerId == request.RequestingUserId;
         if (!isOwner)
         {
@@ -25,8 +24,14 @@ public class GetCollaboratorsHandler(
             var isCollaborator = collaborators.Any(c =>
                 c.UserId == request.RequestingUserId ||
                 c.UserEmail.Equals(request.RequestingUserEmail, StringComparison.OrdinalIgnoreCase));
+
             if (!isCollaborator)
+            {
+                // Public documents: return empty list instead of 403 so the editor loads cleanly
+                if (document.Visibility == Visibility.Public)
+                    return [];
                 throw new UnauthorizedAccessException("Access denied");
+            }
         }
 
         var list = await collaboratorRepository.GetByDocumentIdAsync(request.DocumentId, cancellationToken);
@@ -34,6 +39,7 @@ public class GetCollaboratorsHandler(
     }
 
     private static CollaboratorDto ToDto(DocumentCollaborator c) => new(
+        c.Id,
         c.DocumentId,
         c.UserId,
         c.UserEmail,
