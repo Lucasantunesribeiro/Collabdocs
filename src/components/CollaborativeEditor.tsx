@@ -66,6 +66,7 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
   const [lastSaved, setLastSaved] = useState<Date>(new Date());
   const [isDirty, setIsDirty] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
   const [isLoadingCollaborators, setIsLoadingCollaborators] = useState(true);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -97,6 +98,7 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
     if (!isDirty || !session) return;
     setIsSaving(true);
     setSaveStatus('saving');
+    setSaveError(null);
     try {
       await secureApiService.updateDocument(documentId, { content }, session);
       setLastSaved(new Date());
@@ -104,8 +106,14 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
       setSaveStatus('saved');
       localStorage.setItem(`collabdocs_document_${documentId}_content`, content);
       localStorage.setItem(`collabdocs_document_${documentId}_last_saved`, new Date().toISOString());
-    } catch {
+    } catch (err) {
       setSaveStatus('error');
+      const msg = err instanceof Error ? err.message : '';
+      if (msg.includes('403') || msg.toLowerCase().includes('forbidden')) {
+        setSaveError('Você não tem permissão para editar este documento. Apenas o proprietário ou colaboradores com acesso de escrita podem salvar alterações.');
+      } else {
+        setSaveError('Não foi possível salvar o documento. Verifique sua conexão e tente novamente.');
+      }
     } finally {
       setIsSaving(false);
     }
@@ -115,6 +123,7 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
     if (!session) return;
     setIsSaving(true);
     setSaveStatus('saving');
+    setSaveError(null);
     try {
       await secureApiService.updateDocument(documentId, { content }, session);
       setLastSaved(new Date());
@@ -123,8 +132,14 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
       localStorage.setItem(`collabdocs_document_${documentId}_content`, content);
       localStorage.setItem(`collabdocs_document_${documentId}_last_saved`, new Date().toISOString());
       setTimeout(() => setSaveStatus('saved'), 2000);
-    } catch {
+    } catch (err) {
       setSaveStatus('error');
+      const msg = err instanceof Error ? err.message : '';
+      if (msg.includes('403') || msg.toLowerCase().includes('forbidden')) {
+        setSaveError('Você não tem permissão para editar este documento. Apenas o proprietário ou colaboradores com acesso de escrita podem salvar alterações.');
+      } else {
+        setSaveError('Não foi possível salvar o documento. Verifique sua conexão e tente novamente.');
+      }
     } finally {
       setIsSaving(false);
     }
@@ -183,6 +198,26 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
 
   return (
     <div className="min-h-screen bg-surface flex flex-col">
+      {/* Permission / save error banner */}
+      {saveError && (
+        <div className="sticky top-0 z-50 flex items-start gap-3 bg-error-container border-b border-error/30 px-4 md:px-6 py-3">
+          <span
+            className="material-symbols-outlined text-error flex-shrink-0 mt-0.5"
+            style={{ fontSize: '20px', fontVariationSettings: "'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20" }}
+          >
+            lock
+          </span>
+          <p className="text-sm text-error flex-1">{saveError}</p>
+          <button
+            onClick={() => setSaveError(null)}
+            className="text-error/60 hover:text-error transition-colors flex-shrink-0"
+            aria-label="Fechar"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>close</span>
+          </button>
+        </div>
+      )}
+
       {/* Editor Header */}
       <header className="sticky top-0 z-40 glass border-b border-outline-variant px-4 md:px-6 py-3">
         <div className="flex items-center gap-3 max-w-7xl mx-auto">
