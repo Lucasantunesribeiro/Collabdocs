@@ -1,24 +1,25 @@
-# AWS ECS Deployment — CollabDocs .NET API
+# AWS App Runner Deployment — CollabDocs .NET API
 #
 # Triggers on push to main when dotnet/** files change.
 # Uses OIDC (no static AWS keys) for short-lived credentials.
 #
 # Required GitHub secrets:
-#   AWS_ROLE_ARN      — IAM role ARN with OIDC trust (e.g. arn:aws:iam::123:role/github-actions-collabdocs)
+#   AWS_ROLE_ARN      — IAM role ARN with OIDC trust
 #   AWS_REGION        — Target region (e.g. us-east-1)
 #   ECR_REPOSITORY    — ECR repo name (e.g. collabdocs-api)
 #
-# The ECS cluster and service names are derived from the CloudFormation stack
-# exported values; override via env vars if needed.
+# Stack outputs used automatically:
+#   collabdocs → ServiceArn   (App Runner service ARN)
+#   collabdocs → ServiceUrl   (HTTPS endpoint for health check)
 
-name: Deploy .NET API to ECS
+name: Deploy .NET API to App Runner
 
 on:
   push:
     branches: [main]
     paths:
       - "dotnet/**"
-      - "aws/ecs-task-definition.json"
+      - "aws/apprunner.yml"
       - ".github/workflows/deploy.yml"
 
 permissions:
@@ -26,11 +27,7 @@ permissions:
   contents: read
 
 env:
-  ECS_CLUSTER: collabdocs-cluster
-  ECS_SERVICE: collabdocs-api-service
-  CONTAINER_NAME: collabdocs-api
-  TASK_DEFINITION_FAMILY: collabdocs-api
-  AWS_DEFAULT_REGION: us-east-1   # fallback when secret is not yet configured
+  AWS_DEFAULT_REGION: us-east-1
 
 jobs:
   # ── Guard: skip gracefully when AWS secrets are not configured ──────────────
@@ -49,7 +46,7 @@ jobs:
             echo "configured=true" >> "$GITHUB_OUTPUT"
           else
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::AWS secrets (AWS_ROLE_ARN, ECR_REPOSITORY) are not configured — skipping ECS deploy"
+            echo "::notice::AWS secrets not configured — skipping App Runner deploy"
           fi
 
   # ── Stage 1: Build & Test ────────────────────────────────────────────────────
@@ -96,7 +93,6 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
-          # Short-lived credentials — no static keys stored
           role-session-name: github-actions-collabdocs-${{ github.run_id }}
 
       - name: Login to Amazon ECR
@@ -108,7 +104,6 @@ jobs:
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
-          # Tag with both commit SHA (immutable, traceable) and latest (convenience)
           IMAGE_TAG: ${{ github.sha }}
         run: |
           docker build \
@@ -121,17 +116,14 @@ jobs:
           docker push "$ECR_REGISTRY/$ECR_REPOSITORY:latest"
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> "$GITHUB_OUTPUT"
 
-  # ── Stage 3: Deploy to ECS ───────────────────────────────────────────────────
+  # ── Stage 3: Deploy to App Runner ───────────────────────────────────────────
   deploy:
-    name: Deploy to ECS Fargate
+    name: Deploy to App Runner
     runs-on: ubuntu-latest
     needs: build-and-push
-    environment: production   # requires manual approval if configured in GitHub
+    environment: production
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -139,60 +131,71 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
           role-session-name: github-actions-collabdocs-deploy-${{ github.run_id }}
 
-      - name: Download current task definition from ECS
-        # Always use the live task definition as the base so CloudFormation-managed
-        # fields (execution role, task role, log group, etc.) stay in sync.
+      - name: Get App Runner service ARN from CloudFormation
+        id: get-service
         run: |
-          aws ecs describe-task-definition \
-            --task-definition "${{ env.TASK_DEFINITION_FAMILY }}" \
-            --query taskDefinition \
-            > /tmp/task-definition.json
-
-      - name: Render updated task definition with new image
-        id: task-def
-        uses: aws-actions/amazon-ecs-render-task-definition@v1
-        with:
-          task-definition: /tmp/task-definition.json
-          container-name: ${{ env.CONTAINER_NAME }}
-          image: ${{ needs.build-and-push.outputs.image }}
-
-      - name: Register new task definition revision
-        id: register-task-def
-        run: |
-          TASK_DEF_ARN=$(aws ecs register-task-definition \
-            --cli-input-json "file://${{ steps.task-def.outputs.task-definition }}" \
-            --query "taskDefinition.taskDefinitionArn" \
-            --output text)
-          echo "task-def-arn=$TASK_DEF_ARN" >> "$GITHUB_OUTPUT"
-
-      - name: Deploy to ECS service (rolling update)
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
-        with:
-          task-definition: ${{ steps.task-def.outputs.task-definition }}
-          service: ${{ env.ECS_SERVICE }}
-          cluster: ${{ env.ECS_CLUSTER }}
-          # Wait until deployment is stable before marking the step as successful.
-          # The ECS circuit breaker will auto-rollback if tasks fail to start.
-          wait-for-service-stability: true
-
-      - name: Verify health endpoint after deployment
-        env:
-          AWS_REGION: ${{ secrets.AWS_REGION }}
-        run: |
-          ALB_DNS=$(aws cloudformation describe-stacks \
+          SERVICE_ARN=$(aws cloudformation describe-stacks \
             --stack-name collabdocs \
-            --query "Stacks[0].Outputs[?OutputKey=='ALBDNSName'].OutputValue" \
+            --query "Stacks[0].Outputs[?OutputKey=='ServiceArn'].OutputValue" \
             --output text)
-          echo "ALB DNS: $ALB_DNS"
-          # Retry up to 6 times (3 minutes) to account for DNS propagation
+          SERVICE_URL=$(aws cloudformation describe-stacks \
+            --stack-name collabdocs \
+            --query "Stacks[0].Outputs[?OutputKey=='ServiceUrl'].OutputValue" \
+            --output text)
+          echo "service-arn=$SERVICE_ARN" >> "$GITHUB_OUTPUT"
+          echo "service-url=$SERVICE_URL" >> "$GITHUB_OUTPUT"
+          echo "App Runner service: $SERVICE_URL"
+
+      - name: Update App Runner service with new image
+        run: |
+          aws apprunner update-service \
+            --service-arn "${{ steps.get-service.outputs.service-arn }}" \
+            --source-configuration "{
+              \"ImageRepository\": {
+                \"ImageIdentifier\": \"${{ needs.build-and-push.outputs.image }}\",
+                \"ImageRepositoryType\": \"ECR\",
+                \"ImageConfiguration\": {\"Port\": \"5000\"}
+              },
+              \"AuthenticationConfiguration\": {
+                \"AccessRoleArn\": \"$(aws iam get-role --role-name collabdocs-apprunner-access-role --query 'Role.Arn' --output text)\"
+              }
+            }"
+
+      - name: Wait for App Runner deployment to complete
+        run: |
+          SERVICE_ARN="${{ steps.get-service.outputs.service-arn }}"
+          echo "Waiting for App Runner deployment..."
+          for i in $(seq 1 30); do
+            STATUS=$(aws apprunner describe-service \
+              --service-arn "$SERVICE_ARN" \
+              --query 'Service.Status' \
+              --output text)
+            echo "Attempt $i/30 — Status: $STATUS"
+            if [ "$STATUS" = "RUNNING" ]; then
+              echo "Deployment complete."
+              exit 0
+            fi
+            if [ "$STATUS" = "CREATE_FAILED" ] || [ "$STATUS" = "UPDATE_FAILED" ]; then
+              echo "Deployment failed with status: $STATUS"
+              exit 1
+            fi
+            sleep 20
+          done
+          echo "Deployment timed out after 10 minutes."
+          exit 1
+
+      - name: Verify health endpoint
+        run: |
+          SERVICE_URL="${{ steps.get-service.outputs.service-url }}"
+          echo "Checking health at $SERVICE_URL/api/health ..."
           for i in $(seq 1 6); do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://$ALB_DNS/health" || true)
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$SERVICE_URL/api/health" || true)
             echo "Attempt $i — HTTP $STATUS"
             if [ "$STATUS" = "200" ]; then
               echo "Health check passed."
               exit 0
             fi
-            sleep 30
+            sleep 15
           done
           echo "Health check failed after 6 attempts."
           exit 1
@@ -200,6 +203,5 @@ jobs:
       - name: Notify on failure
         if: failure()
         run: |
-          echo "Deployment failed. The ECS circuit breaker may have initiated a rollback."
-          echo "Check CloudWatch Logs: /ecs/collabdocs-api"
-          echo "Check ECS service events in the AWS Console."
+          echo "Deployment failed."
+          echo "Check App Runner logs in the AWS Console → App Runner → collabdocs-api → Logs"
