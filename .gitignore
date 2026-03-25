@@ -78,3 +78,9 @@ Thumbs.db
 # Local development
 .local/
 .vercel
+
+# Private local-only files — not for version control
+CLAUDE.md
+Descricao_Portfolio.md
+Descricao_Portfolio_Collabdocs.md
+Descricao_Portfolio_SmartFinance.md

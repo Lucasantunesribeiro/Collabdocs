@@ -30,11 +30,33 @@ env:
   ECS_SERVICE: collabdocs-api-service
   CONTAINER_NAME: collabdocs-api
   TASK_DEFINITION_FAMILY: collabdocs-api
+  AWS_DEFAULT_REGION: us-east-1   # fallback when secret is not yet configured
 
 jobs:
+  # ── Guard: skip gracefully when AWS secrets are not configured ──────────────
+  check-aws-secrets:
+    name: Check AWS Secrets
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+    steps:
+      - id: check
+        env:
+          ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+          ECR_REPO: ${{ secrets.ECR_REPOSITORY }}
+        run: |
+          if [ -n "$ROLE_ARN" ] && [ -n "$ECR_REPO" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::AWS secrets (AWS_ROLE_ARN, ECR_REPOSITORY) are not configured — skipping ECS deploy"
+          fi
+
   # ── Stage 1: Build & Test ────────────────────────────────────────────────────
   dotnet-build:
     name: Build & Test (.NET)
+    needs: check-aws-secrets
+    if: needs.check-aws-secrets.outputs.configured == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -73,7 +95,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
           # Short-lived credentials — no static keys stored
           role-session-name: github-actions-collabdocs-${{ github.run_id }}
 
@@ -114,7 +136,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
           role-session-name: github-actions-collabdocs-deploy-${{ github.run_id }}
 
       - name: Download current task definition from ECS
