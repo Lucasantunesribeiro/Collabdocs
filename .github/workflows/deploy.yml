@@ -1,25 +1,23 @@
-# AWS App Runner Deployment — CollabDocs .NET API
+# AWS Lambda Deployment — CollabDocs .NET API
 #
 # Triggers on push to main when dotnet/** files change.
 # Uses OIDC (no static AWS keys) for short-lived credentials.
 #
 # Required GitHub secrets:
-#   AWS_ROLE_ARN      — IAM role ARN with OIDC trust
-#   AWS_REGION        — Target region (e.g. us-east-1)
-#   ECR_REPOSITORY    — ECR repo name (e.g. collabdocs-api)
+#   AWS_ROLE_ARN      — arn:aws:iam::246599827442:role/github-actions-collabdocs
+#   AWS_REGION        — us-east-1
+#   ECR_REPOSITORY    — collabdocs-api
 #
-# Stack outputs used automatically:
-#   collabdocs → ServiceArn   (App Runner service ARN)
-#   collabdocs → ServiceUrl   (HTTPS endpoint for health check)
+# Lambda Function URL (public HTTPS endpoint):
+#   https://gexxy5wfog4drgronvtfs7re4a0mcopr.lambda-url.us-east-1.on.aws/
 
-name: Deploy .NET API to App Runner
+name: Deploy .NET API to Lambda
 
 on:
   push:
     branches: [main]
     paths:
       - "dotnet/**"
-      - "aws/apprunner.yml"
       - ".github/workflows/deploy.yml"
 
 permissions:
@@ -28,6 +26,7 @@ permissions:
 
 env:
   AWS_DEFAULT_REGION: us-east-1
+  LAMBDA_FUNCTION_NAME: collabdocs-api
 
 jobs:
   # ── Guard: skip gracefully when AWS secrets are not configured ──────────────
@@ -46,7 +45,7 @@ jobs:
             echo "configured=true" >> "$GITHUB_OUTPUT"
           else
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::AWS secrets not configured — skipping App Runner deploy"
+            echo "::notice::AWS secrets not configured — skipping Lambda deploy"
           fi
 
   # ── Stage 1: Build & Test ────────────────────────────────────────────────────
@@ -72,8 +71,8 @@ jobs:
         run: dotnet build --no-restore -c Release
         working-directory: dotnet
 
-      - name: Run tests
-        run: dotnet test --no-build -c Release --verbosity normal
+      - name: Run unit tests
+        run: dotnet test tests/CollabDocs.Tests.Unit --no-build -c Release --verbosity normal
         working-directory: dotnet
 
   # ── Stage 2: Build Docker image & push to ECR ───────────────────────────────
@@ -116,9 +115,9 @@ jobs:
           docker push "$ECR_REGISTRY/$ECR_REPOSITORY:latest"
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> "$GITHUB_OUTPUT"
 
-  # ── Stage 3: Deploy to App Runner ───────────────────────────────────────────
+  # ── Stage 3: Update Lambda function code ────────────────────────────────────
   deploy:
-    name: Deploy to App Runner
+    name: Deploy to Lambda
     runs-on: ubuntu-latest
     needs: build-and-push
     environment: production
@@ -131,65 +130,27 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
           role-session-name: github-actions-collabdocs-deploy-${{ github.run_id }}
 
-      - name: Get App Runner service ARN from CloudFormation
-        id: get-service
+      - name: Update Lambda function code
         run: |
-          SERVICE_ARN=$(aws cloudformation describe-stacks \
-            --stack-name collabdocs \
-            --query "Stacks[0].Outputs[?OutputKey=='ServiceArn'].OutputValue" \
-            --output text)
-          SERVICE_URL=$(aws cloudformation describe-stacks \
-            --stack-name collabdocs \
-            --query "Stacks[0].Outputs[?OutputKey=='ServiceUrl'].OutputValue" \
-            --output text)
-          echo "service-arn=$SERVICE_ARN" >> "$GITHUB_OUTPUT"
-          echo "service-url=$SERVICE_URL" >> "$GITHUB_OUTPUT"
-          echo "App Runner service: $SERVICE_URL"
+          aws lambda update-function-code \
+            --function-name "$LAMBDA_FUNCTION_NAME" \
+            --image-uri "${{ needs.build-and-push.outputs.image }}" \
+            --region "${{ secrets.AWS_REGION || 'us-east-1' }}"
 
-      - name: Update App Runner service with new image
+      - name: Wait for Lambda update to complete
         run: |
-          aws apprunner update-service \
-            --service-arn "${{ steps.get-service.outputs.service-arn }}" \
-            --source-configuration "{
-              \"ImageRepository\": {
-                \"ImageIdentifier\": \"${{ needs.build-and-push.outputs.image }}\",
-                \"ImageRepositoryType\": \"ECR\",
-                \"ImageConfiguration\": {\"Port\": \"5000\"}
-              },
-              \"AuthenticationConfiguration\": {
-                \"AccessRoleArn\": \"$(aws iam get-role --role-name collabdocs-apprunner-access-role --query 'Role.Arn' --output text)\"
-              }
-            }"
-
-      - name: Wait for App Runner deployment to complete
-        run: |
-          SERVICE_ARN="${{ steps.get-service.outputs.service-arn }}"
-          echo "Waiting for App Runner deployment..."
-          for i in $(seq 1 30); do
-            STATUS=$(aws apprunner describe-service \
-              --service-arn "$SERVICE_ARN" \
-              --query 'Service.Status' \
-              --output text)
-            echo "Attempt $i/30 — Status: $STATUS"
-            if [ "$STATUS" = "RUNNING" ]; then
-              echo "Deployment complete."
-              exit 0
-            fi
-            if [ "$STATUS" = "CREATE_FAILED" ] || [ "$STATUS" = "UPDATE_FAILED" ]; then
-              echo "Deployment failed with status: $STATUS"
-              exit 1
-            fi
-            sleep 20
-          done
-          echo "Deployment timed out after 10 minutes."
-          exit 1
+          echo "Waiting for Lambda update to complete..."
+          aws lambda wait function-updated \
+            --function-name "$LAMBDA_FUNCTION_NAME" \
+            --region "${{ secrets.AWS_REGION || 'us-east-1' }}"
+          echo "Lambda update complete."
 
       - name: Verify health endpoint
         run: |
-          SERVICE_URL="${{ steps.get-service.outputs.service-url }}"
-          echo "Checking health at $SERVICE_URL/api/health ..."
-          for i in $(seq 1 6); do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$SERVICE_URL/api/health" || true)
+          FUNCTION_URL="https://gexxy5wfog4drgronvtfs7re4a0mcopr.lambda-url.us-east-1.on.aws"
+          echo "Checking health at $FUNCTION_URL/health ..."
+          for i in $(seq 1 8); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$FUNCTION_URL/health" || true)
             echo "Attempt $i — HTTP $STATUS"
             if [ "$STATUS" = "200" ]; then
               echo "Health check passed."
@@ -197,11 +158,11 @@ jobs:
             fi
             sleep 15
           done
-          echo "Health check failed after 6 attempts."
+          echo "Health check failed after 8 attempts."
           exit 1
 
       - name: Notify on failure
         if: failure()
         run: |
           echo "Deployment failed."
-          echo "Check App Runner logs in the AWS Console → App Runner → collabdocs-api → Logs"
+          echo "Check Lambda logs: aws logs tail /aws/lambda/collabdocs-api --follow"

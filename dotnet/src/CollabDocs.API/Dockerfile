@@ -12,13 +12,20 @@ RUN dotnet restore "src/CollabDocs.API/CollabDocs.API.csproj"
 # Copy source and publish
 COPY . .
 WORKDIR "/src/src/CollabDocs.API"
-RUN dotnet publish "CollabDocs.API.csproj" -c Release -o /app/publish --no-restore
+RUN dotnet publish "CollabDocs.API.csproj" -c Release -o /app/publish
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
 WORKDIR /app
 EXPOSE 5000
 ENV ASPNETCORE_URLS=http://+:5000
+
+# Lambda Web Adapter — translates Lambda Function URL invocations to HTTP.
+# Enables running this ASP.NET Core app as AWS Lambda without code changes.
+# Remove these two lines if deploying outside Lambda (App Runner, ECS, etc.)
+COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:0.8.4 /lambda-adapter /opt/extensions/lambda-adapter
+ENV PORT=5000
+ENV AWS_LWA_READINESS_CHECK_PATH=/health
 
 # Run as non-root user (app user is built into the aspnet image)
 USER app
