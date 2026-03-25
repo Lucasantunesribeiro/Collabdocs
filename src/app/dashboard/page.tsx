@@ -3,15 +3,15 @@
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
-import LandingPage from '@/components/LandingPage'
+import Dashboard from '@/components/Dashboard'
 
-export default function HomePage() {
+export default function DashboardPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
 
   useEffect(() => {
-    if (status === 'authenticated') {
-      router.replace('/dashboard')
+    if (status === 'unauthenticated') {
+      router.replace('/auth/signin')
     }
   }, [status, router])
 
@@ -23,9 +23,7 @@ export default function HomePage() {
     )
   }
 
-  if (status === 'authenticated') {
-    return null
-  }
+  if (!session) return null
 
-  return <LandingPage />
+  return <Dashboard />
 }

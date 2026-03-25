@@ -1,5 +1,4 @@
 import React from 'react';
-import { LucideIcon, AlertCircle, CheckCircle, AlertTriangle, Info } from 'lucide-react';
 
 interface AlertProps {
   type: 'success' | 'error' | 'warning' | 'info';
@@ -11,41 +10,42 @@ interface AlertProps {
 export function Alert({ type, title, children, className = '' }: AlertProps) {
   const alertConfig = {
     success: {
-      icon: CheckCircle,
-      classes: 'bg-success-50 border-success-200 text-success-800',
-      iconClasses: 'text-success-600'
+      icon: 'check_circle',
+      classes: 'bg-surface-container border-success/30 text-on-surface',
+      iconClasses: 'text-success',
     },
     error: {
-      icon: AlertCircle,
-      classes: 'bg-error-50 border-error-200 text-error-800',
-      iconClasses: 'text-error-600'
+      icon: 'error',
+      classes: 'bg-error-container border-error/30 text-on-surface',
+      iconClasses: 'text-error',
     },
     warning: {
-      icon: AlertTriangle,
-      classes: 'bg-warning-50 border-warning-200 text-warning-800',
-      iconClasses: 'text-warning-600'
+      icon: 'warning',
+      classes: 'bg-surface-container border-tertiary/30 text-on-surface',
+      iconClasses: 'text-tertiary',
     },
     info: {
-      icon: Info,
-      classes: 'bg-info-50 border-info-200 text-info-800',
-      iconClasses: 'text-info-600'
-    }
+      icon: 'info',
+      classes: 'bg-surface-container border-outline-variant text-on-surface',
+      iconClasses: 'text-secondary',
+    },
   };
-  
+
   const config = alertConfig[type];
-  const Icon = config.icon;
-  
+
   return (
-    <div className={`p-4 rounded-lg border ${config.classes} ${className}`}>
+    <div className={`p-4 rounded-xl border ${config.classes} ${className}`}>
       <div className="flex gap-3">
-        <Icon className={`w-5 h-5 flex-shrink-0 mt-0.5 ${config.iconClasses}`} />
+        <span className={`material-symbols-outlined flex-shrink-0 mt-0.5 ${config.iconClasses}`} style={{ fontSize: '20px' }}>
+          {config.icon}
+        </span>
         <div className="flex-1">
           {title && (
-            <h4 className="font-medium mb-1">
+            <h4 className="font-display font-semibold text-sm text-on-surface mb-1">
               {title}
             </h4>
           )}
-          <div className="text-sm">
+          <div className="text-sm text-on-surface-variant">
             {children}
           </div>
         </div>

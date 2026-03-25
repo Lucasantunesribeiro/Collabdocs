@@ -8,18 +8,18 @@ interface CardProps {
 }
 
 export function Card({ children, className = '', hover = false, padding = 'md' }: CardProps) {
-  const baseClasses = 'bg-white rounded-xl border border-text-200 shadow-soft';
-  const hoverClasses = hover ? 'hover:shadow-medium transition-all duration-200 hover:-translate-y-1' : '';
-  
+  const baseClasses = 'glass rounded-2xl';
+  const hoverClasses = hover ? 'hover:border-outline transition-all duration-200' : '';
+
   const paddingClasses = {
     none: '',
     sm: 'p-3',
     md: 'p-6',
-    lg: 'p-8'
+    lg: 'p-8',
   };
-  
+
   const classes = `${baseClasses} ${hoverClasses} ${paddingClasses[padding]} ${className}`;
-  
+
   return (
     <div className={classes}>
       {children}
@@ -60,7 +60,7 @@ interface CardFooterProps {
 
 export function CardFooter({ children, className = '' }: CardFooterProps) {
   return (
-    <div className={`pt-4 border-t border-text-100 ${className}`}>
+    <div className={`pt-4 border-t border-outline-variant ${className}`}>
       {children}
     </div>
   );
