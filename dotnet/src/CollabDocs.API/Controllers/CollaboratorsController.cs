@@ -35,6 +35,7 @@ public class CollaboratorsController(ISender sender) : ControllerBase
         }
         catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
         catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (Exception ex) { return StatusCode(500, new { error = "Failed to load collaborators", detail = ex.Message }); }
     }
 
     [HttpPost]

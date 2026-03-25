@@ -37,7 +37,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         modelBuilder.Entity<DocumentCollaborator>(entity =>
         {
-            entity.HasKey(dc => new { dc.DocumentId, dc.UserId });
+            entity.HasKey(dc => dc.Id);
+            entity.HasIndex(dc => new { dc.DocumentId, dc.UserEmail }).IsUnique();
             entity.Property(dc => dc.UserEmail).IsRequired().HasMaxLength(256);
             entity.Property(dc => dc.Permission)
                 .HasConversion(p => p.ToString().ToLower(), p => Enum.Parse<Permission>(p, true));

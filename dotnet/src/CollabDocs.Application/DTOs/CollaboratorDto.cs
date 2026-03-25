@@ -1,11 +1,14 @@
+using System.Text.Json.Serialization;
+
 namespace CollabDocs.Application.DTOs;
 
 public record CollaboratorDto(
-    Guid DocumentId,
-    string UserId,
-    string UserEmail,
+    [property: JsonPropertyName("id")]          Guid Id,
+    [property: JsonPropertyName("document_id")] Guid DocumentId,
+    [property: JsonPropertyName("user_id")]     string UserId,
+    [property: JsonPropertyName("user_email")]  string UserEmail,
     /// <summary>Normalized permission string: "read", "write", or "owner".</summary>
     string Permission,
-    string GrantedBy,
-    DateTime GrantedAt
+    [property: JsonPropertyName("added_by")]    string AddedBy,
+    [property: JsonPropertyName("created_at")]  DateTime CreatedAt
 );
