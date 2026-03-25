@@ -216,6 +216,55 @@ public class DocumentApiTests(CollabDocsWebFactory factory) : IClassFixture<Coll
     }
 
     // -----------------------------------------------------------------------
+    // Visibility: public documents are visible cross-user
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public async Task GetDocuments_PublicDocumentFromAnotherUser_ShouldAppearInList()
+    {
+        // Arrange — User A creates a public document
+        var userA = factory.CreateAuthenticatedClient(
+            userId: "visibility-user-a",
+            email: "userA@visibility.com",
+            name: "User A");
+
+        var userB = factory.CreateAuthenticatedClient(
+            userId: "visibility-user-b",
+            email: "userB@visibility.com",
+            name: "User B");
+
+        var createBody = new { title = "Public Doc From A", content = "Visible to all", visibility = "public" };
+        var createResponse = await userA.PostAsJsonAsync("/api/documents", createBody);
+        createResponse.EnsureSuccessStatusCode();
+        var created = await ParseResponseAsync(createResponse);
+        var publicDocId = created.GetProperty("document").GetProperty("id").GetString()!;
+
+        var privateBody = new { title = "Private Doc From A", content = "Only A sees this", visibility = "private" };
+        await userA.PostAsJsonAsync("/api/documents", privateBody);
+
+        // Act — User B lists documents
+        var response = await userB.GetAsync("/api/documents");
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var json = await ParseResponseAsync(response);
+        var documents = json.GetProperty("documents").EnumerateArray().ToList();
+
+        documents.Should().Contain(d => d.GetProperty("id").GetString() == publicDocId,
+            "public documents from other users must appear in the list");
+
+        documents.Should().NotContain(d =>
+            d.GetProperty("owner_id").GetString() == "visibility-user-a" &&
+            d.GetProperty("visibility").GetString() == "private",
+            "private documents from other users must not appear in the list");
+
+        var publicDoc = documents.First(d => d.GetProperty("id").GetString() == publicDocId);
+        publicDoc.GetProperty("is_owner").GetBoolean().Should().BeFalse(
+            "User B is not the owner of User A's document");
+    }
+
+    // -----------------------------------------------------------------------
     // Unauthenticated requests
     // -----------------------------------------------------------------------
 

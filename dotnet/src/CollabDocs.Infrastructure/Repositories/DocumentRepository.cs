@@ -1,4 +1,5 @@
 using CollabDocs.Domain.Entities;
+using CollabDocs.Domain.Enums;
 using CollabDocs.Domain.Interfaces;
 using CollabDocs.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -14,7 +15,8 @@ public class DocumentRepository(AppDbContext context) : IDocumentRepository
         string userId, string userEmail, CancellationToken cancellationToken = default)
     {
         return await context.Documents
-            .Where(d => d.OwnerId == userId ||
+            .Where(d => d.Visibility == Visibility.Public ||
+                        d.OwnerId == userId ||
                         context.DocumentCollaborators.Any(dc =>
                             dc.DocumentId == d.Id &&
                             (dc.UserId == userId || dc.UserEmail == userEmail)))
