@@ -58,10 +58,19 @@ export default function Dashboard() {
     if (!confirm('Tem certeza que deseja deletar este documento?')) return
     try {
       await secureApiService.deleteDocument(documentId, session)
-      await loadDocuments()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao deletar documento')
+    } catch {
+      // API returned an error. The deletion may have committed anyway (Lambda/Neon
+      // can drop the connection after a successful DB commit). Reload to check reality.
+      const response = await secureApiService.getDocuments(session).catch(() => null)
+      if (response) {
+        setDocuments(response.documents)
+        // If the document is gone from the reloaded list, treat deletion as successful
+        if (!response.documents.some(d => d.id === documentId)) return
+      }
+      setError('Erro ao deletar documento. Por favor, tente novamente.')
+      return
     }
+    await loadDocuments()
   }
 
   const filteredDocs = documents.filter((doc) => {
