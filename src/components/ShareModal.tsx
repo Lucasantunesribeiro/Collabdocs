@@ -141,7 +141,7 @@ export function ShareModal({ documentId, session, onClose }: ShareModalProps) {
                 <div key={c.id} className="flex items-center gap-3 p-3 rounded-xl bg-surface-container">
                   <div className="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center flex-shrink-0">
                     <span className="text-sm font-semibold text-secondary">
-                      {c.user_email.charAt(0).toUpperCase()}
+                      {c.user_email?.charAt(0)?.toUpperCase() || '?'}
                     </span>
                   </div>
                   <div className="flex-1 min-w-0">

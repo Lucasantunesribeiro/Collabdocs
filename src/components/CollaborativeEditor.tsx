@@ -226,7 +226,7 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
                   title={u.userName}
                 >
                   <span className="text-xs font-semibold text-secondary">
-                    {u.userName.charAt(0).toUpperCase()}
+                    {u.userName?.charAt(0)?.toUpperCase() || '?'}
                   </span>
                 </div>
               ))}
@@ -329,7 +329,7 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
                       <div className="relative">
                         <div className="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center">
                           <span className="text-xs font-semibold text-secondary">
-                            {c.user_email.charAt(0).toUpperCase()}
+                            {c.user_email?.charAt(0)?.toUpperCase() || '?'}
                           </span>
                         </div>
                         {(isOnline || isCurrentUser) && (
