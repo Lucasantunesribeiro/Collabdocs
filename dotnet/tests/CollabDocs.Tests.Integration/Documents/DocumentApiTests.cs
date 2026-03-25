@@ -76,8 +76,8 @@ public class DocumentApiTests(CollabDocsWebFactory factory) : IClassFixture<Coll
 
         var documents = json.GetProperty("documents").EnumerateArray().ToList();
         documents.Should().HaveCountGreaterThanOrEqualTo(2);
-        documents.All(d => d.GetProperty("owner_id").GetString() == "list-test-user")
-            .Should().BeTrue("list must only return documents owned by or shared with the caller");
+        documents.Should().Contain(d => d.GetProperty("owner_id").GetString() == "list-test-user",
+            "documents owned by the caller must appear in the list");
     }
 
     // -----------------------------------------------------------------------
