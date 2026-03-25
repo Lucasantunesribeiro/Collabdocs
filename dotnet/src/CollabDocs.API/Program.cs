@@ -35,11 +35,17 @@ builder.Services.AddScoped<IOutboxRepository, OutboxRepository>();
 builder.Services.AddMediatR(cfg =>
     cfg.RegisterServicesFromAssembly(typeof(CreateDocumentHandler).Assembly));
 
-// RabbitMQ — Outbox Publisher + Event Consumer (degrade gracefully if RabbitMQ is down)
+// RabbitMQ — Outbox Publisher + Event Consumer
+// Only registered when RabbitMQ:Host is configured (omit to run without RabbitMQ;
+// outbox messages stay in DB and are retried when messaging is re-enabled).
 builder.Services.Configure<RabbitMQSettings>(
     builder.Configuration.GetSection("RabbitMQ"));
-builder.Services.AddHostedService<OutboxPublisherService>();
-builder.Services.AddHostedService<DocumentEventConsumer>();
+var rabbitMqHost = builder.Configuration["RabbitMQ:Host"];
+if (!string.IsNullOrEmpty(rabbitMqHost))
+{
+    builder.Services.AddHostedService<OutboxPublisherService>();
+    builder.Services.AddHostedService<DocumentEventConsumer>();
+}
 
 // Redis cache — degrades gracefully to NullDocumentCacheService when Redis is unavailable
 var redisConnectionString = builder.Configuration.GetConnectionString("Redis");

@@ -1,0 +1,204 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  CollabDocs .NET API — AWS App Runner deployment.
+  Cost: ~$14/month (0.25 vCPU + 0.5 GB) vs ~$94/month for the full ECS+ALB stack.
+  No VPC required — connects to Neon PostgreSQL over the internet (SSL).
+
+  Deploy:
+    aws cloudformation deploy \
+      --template-file aws/apprunner.yml \
+      --stack-name collabdocs \
+      --capabilities CAPABILITY_NAMED_IAM \
+      --parameter-overrides \
+          DatabaseUrl="Host=xxx.neon.tech;Database=neondb;Username=xxx;Password=xxx;Ssl Mode=Require" \
+          JwtSecret="your-nextauth-secret"
+
+Parameters:
+  DatabaseUrl:
+    Type: String
+    NoEcho: true
+    Description: >-
+      Neon PostgreSQL connection string.
+      Get it from https://neon.tech → your project → Connection Details.
+      Format: Host=ep-xxx.region.aws.neon.tech;Database=neondb;Username=xxx;Password=xxx;Ssl Mode=Require
+
+  JwtSecret:
+    Type: String
+    NoEcho: true
+    Description: >-
+      JWT signing secret — must match NEXTAUTH_SECRET in Vercel
+      and Cloudflare Worker secrets.
+
+  AllowedOrigin:
+    Type: String
+    Default: https://collabdocs-app.vercel.app
+    Description: Frontend origin added to CORS allowlist.
+
+  InstanceCpu:
+    Type: String
+    Default: "0.25 vCPU"
+    AllowedValues: ["0.25 vCPU", "0.5 vCPU", "1 vCPU"]
+    Description: App Runner instance CPU. 0.25 vCPU ≈ $7/month, 1 vCPU ≈ $28/month.
+
+  InstanceMemory:
+    Type: String
+    Default: "0.5 GB"
+    AllowedValues: ["0.5 GB", "1 GB", "2 GB"]
+    Description: App Runner instance memory. Must be compatible with chosen CPU.
+
+Resources:
+  # ── ECR Repository ────────────────────────────────────────────────────────────
+  ECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: collabdocs-api
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [{
+              "rulePriority": 1,
+              "description": "Keep last 5 images, expire the rest",
+              "selection": {
+                "tagStatus": "any",
+                "countType": "imageCountMoreThan",
+                "countNumber": 5
+              },
+              "action": { "type": "expire" }
+            }]
+          }
+
+  # ── Secrets Manager ───────────────────────────────────────────────────────────
+  DbSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: collabdocs/db-url
+      Description: Neon PostgreSQL connection string for CollabDocs API
+      SecretString: !Ref DatabaseUrl
+
+  JwtSecretValue:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: collabdocs/jwt-secret
+      Description: JWT signing secret for CollabDocs API
+      SecretString: !Ref JwtSecret
+
+  # ── IAM Role — App Runner pulls images from ECR ───────────────────────────────
+  AppRunnerAccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: collabdocs-apprunner-access-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: build.apprunner.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess
+
+  # ── IAM Role — App Runner task reads secrets from Secrets Manager ─────────────
+  AppRunnerInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: collabdocs-apprunner-instance-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: tasks.apprunner.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ReadCollabDocsSecrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref DbSecret
+                  - !Ref JwtSecretValue
+
+  # ── Auto-scaling: cap at 1 instance to keep cost predictable ─────────────────
+  AutoScalingConfig:
+    Type: AWS::AppRunner::AutoScalingConfiguration
+    Properties:
+      AutoScalingConfigurationName: collabdocs-api-scaling
+      MinSize: 1
+      MaxSize: 1
+      MaxConcurrency: 50
+
+  # ── App Runner Service ────────────────────────────────────────────────────────
+  AppRunnerService:
+    Type: AWS::AppRunner::Service
+    DependsOn:
+      - AppRunnerAccessRole
+      - AppRunnerInstanceRole
+    Properties:
+      ServiceName: collabdocs-api
+      SourceConfiguration:
+        AuthenticationConfiguration:
+          AccessRoleArn: !GetAtt AppRunnerAccessRole.Arn
+        AutoDeploymentsEnabled: false
+        ImageRepository:
+          ImageIdentifier: !Sub "${ECRRepository.RepositoryUri}:latest"
+          ImageRepositoryType: ECR
+          ImageConfiguration:
+            Port: "5000"
+            # Secrets injected at runtime from Secrets Manager (never in plaintext)
+            RuntimeEnvironmentSecrets:
+              - Name: ConnectionStrings__Default
+                Value: !Ref DbSecret
+              - Name: Jwt__Secret
+                Value: !Ref JwtSecretValue
+            RuntimeEnvironmentVariables:
+              - Name: ASPNETCORE_ENVIRONMENT
+                Value: Production
+              - Name: ASPNETCORE_URLS
+                Value: "http://+:5000"
+              - Name: AllowedOrigins__0
+                Value: !Ref AllowedOrigin
+              - Name: AllowedOrigins__1
+                Value: "http://localhost:3000"
+              # RabbitMQ intentionally omitted → OutboxPublisher not registered
+              # Redis intentionally omitted → NullDocumentCacheService used
+      InstanceConfiguration:
+        Cpu: !Ref InstanceCpu
+        Memory: !Ref InstanceMemory
+        InstanceRoleArn: !GetAtt AppRunnerInstanceRole.Arn
+      HealthCheckConfiguration:
+        Protocol: HTTP
+        Path: /health
+        Interval: 20
+        Timeout: 5
+        HealthyThreshold: 1
+        UnhealthyThreshold: 5
+      AutoScalingConfigurationArn: !GetAtt AutoScalingConfig.AutoScalingConfigurationArn
+
+Outputs:
+  ServiceUrl:
+    Value: !Sub "https://${AppRunnerService.ServiceUrl}"
+    Description: >-
+      App Runner HTTPS URL — set this as DOTNET_API_URL in Vercel:
+      Settings → Environment Variables → DOTNET_API_URL = <this value>/api
+    Export:
+      Name: collabdocs-api-url
+
+  ServiceArn:
+    Value: !Ref AppRunnerService
+    Description: App Runner service ARN — used by CI/CD to trigger deployments
+    Export:
+      Name: collabdocs-apprunner-arn
+
+  ECRRepositoryUri:
+    Value: !GetAtt ECRRepository.RepositoryUri
+    Description: ECR repository URI — used in GitHub Actions
+    Export:
+      Name: collabdocs-ecr-repo
+
+  MonthlyCostEstimate:
+    Value: "~$7/month (0.25 vCPU + 0.5 GB, 1 instance, 24/7) + Neon free tier"
+    Description: Estimated monthly cost
