@@ -39,10 +39,23 @@ public class DocumentRepository(AppDbContext context) : IDocumentRepository
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var doc = await context.Documents.FindAsync([id], cancellationToken);
-        if (doc is not null)
+        if (doc is null) return; // already deleted — idempotent
+        context.Documents.Remove(doc);
+        try
         {
-            context.Documents.Remove(doc);
             await context.SaveChangesAsync(cancellationToken);
+        }
+        catch
+        {
+            // On Lambda + Neon (serverless PostgreSQL) the TCP connection can reset
+            // immediately after a successful commit, before EF Core receives the
+            // acknowledgment. Clear the tracker and verify actual DB state.
+            context.ChangeTracker.Clear();
+            var stillExists = await context.Documents
+                .AsNoTracking()
+                .AnyAsync(d => d.Id == id, cancellationToken);
+            if (stillExists) throw; // genuine failure — document still in DB
+            // Document was actually committed; swallow the spurious exception
         }
     }
 }
