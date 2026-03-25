@@ -43,7 +43,7 @@ public class DocumentApiTests(CollabDocsWebFactory factory) : IClassFixture<Coll
 
         doc.GetProperty("title").GetString().Should().Be("My Integration Doc");
         doc.GetProperty("content").GetString().Should().Be("Hello world");
-        doc.GetProperty("ownerId").GetString().Should().Be(CollabDocsWebFactory.TestUserId);
+        doc.GetProperty("owner_id").GetString().Should().Be(CollabDocsWebFactory.TestUserId);
         doc.GetProperty("version").GetInt32().Should().Be(1);
         doc.GetProperty("id").GetString().Should().NotBeNullOrEmpty();
     }
@@ -76,7 +76,7 @@ public class DocumentApiTests(CollabDocsWebFactory factory) : IClassFixture<Coll
 
         var documents = json.GetProperty("documents").EnumerateArray().ToList();
         documents.Should().HaveCountGreaterThanOrEqualTo(2);
-        documents.All(d => d.GetProperty("ownerId").GetString() == "list-test-user")
+        documents.All(d => d.GetProperty("owner_id").GetString() == "list-test-user")
             .Should().BeTrue("list must only return documents owned by or shared with the caller");
     }
 
