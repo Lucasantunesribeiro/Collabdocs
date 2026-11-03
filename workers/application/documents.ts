@@ -8,10 +8,11 @@ import {
   findUsersByIds,
   updateDocumentRecord,
   deleteDocumentRecord,
-  checkCollaboratorAccess,
   logAuditEvent,
 } from '../infrastructure/db';
 import { logger } from '../lib/logger';
+import { authorizeDocument } from './access';
+import { toApiPermission, type DocumentOperation } from '../domain/authorization';
 
 export interface EnrichedDocument extends Document {
   owner_name: string;
@@ -81,30 +82,8 @@ export async function getDocumentById(
   user: AuthenticatedUser,
   documentId: string
 ): Promise<DocumentWithPermission> {
-  const doc = await findDocumentById(db, documentId);
-
-  if (!doc) {
-    const err = new Error('Document not found');
-    (err as any).status = 404;
-    throw err;
-  }
-
-  const isOwner = doc.owner_id === user.id;
-  const collaboratorPermission = await checkCollaboratorAccess(
-    db,
-    documentId,
-    user.id,
-    user.email
-  );
-  const isPublic = doc.visibility === 'public';
-
-  if (!isOwner && !collaboratorPermission && !isPublic) {
-    const err = new Error('You do not have permission to access this document');
-    (err as any).status = 403;
-    throw err;
-  }
-
-  const permission = isOwner ? 'owner' : (collaboratorPermission ?? 'read');
+  const { doc, role } = await authorizeDocument(db, user, documentId, 'read');
+  const permission = toApiPermission(role) ?? 'read';
 
   const userData = await findUserById(db, doc.owner_id);
   const usersMap: Map<string, any> = new Map();
@@ -129,7 +108,8 @@ export async function createDocument(
 
   const id = crypto.randomUUID();
   const title = data.title?.trim() || 'New Document';
-  const visibility = data.visibility === 'private' ? 'private' : 'public';
+  // Privado por padrão: só é público com visibility === 'public' explícito.
+  const visibility = data.visibility === 'public' ? 'public' : 'private';
   const content = data.content ?? `# ${title}\n\nStart writing here...`;
 
   await createDocumentRecord(db, id, user.id, title, visibility, content);
@@ -148,34 +128,19 @@ export async function updateDocument(
   documentId: string,
   data: { content?: string; title?: string; expectedVersion?: number }
 ): Promise<DocumentWithPermission> {
-  const doc = await findDocumentById(db, documentId);
-
-  if (!doc) {
-    const err = new Error('Document not found');
-    (err as any).status = 404;
-    throw err;
-  }
-
-  const isOwner = doc.owner_id === user.id;
-  const collaboratorPermission = await checkCollaboratorAccess(
-    db,
-    documentId,
-    user.id,
-    user.email
-  );
-  const canWrite =
-    isOwner ||
-    collaboratorPermission === 'write' ||
-    collaboratorPermission === 'owner';
-
-  if (!canWrite) {
-    const err = new Error('You do not have write permission for this document');
-    (err as any).status = 403;
-    throw err;
-  }
-
   if (data.content === undefined && data.title === undefined) {
     const err = new Error('Provide at least one field to update: content or title');
+    (err as any).status = 400;
+    throw err;
+  }
+
+  const operations: DocumentOperation[] = [];
+  if (data.content !== undefined) operations.push('edit_content');
+  if (data.title !== undefined) operations.push('rename');
+  const { role } = await authorizeDocument(db, user, documentId, ...operations);
+
+  if (data.title !== undefined && (typeof data.title !== 'string' || !data.title.trim())) {
+    const err = new Error('title must be a non-empty string');
     (err as any).status = 400;
     throw err;
   }
@@ -200,7 +165,7 @@ export async function updateDocument(
   if (userData) usersMap.set(userData.id, userData);
 
   const enriched = enrichDocument(updated, user.id, usersMap, user.name);
-  const permission = isOwner ? 'owner' : (collaboratorPermission ?? 'read');
+  const permission = toApiPermission(role) ?? 'read';
 
   return { document: enriched, permission };
 }
@@ -210,19 +175,7 @@ export async function deleteDocument(
   user: AuthenticatedUser,
   documentId: string
 ): Promise<{ documentId: string; title: string }> {
-  const doc = await findDocumentById(db, documentId);
-
-  if (!doc) {
-    const err = new Error('Document not found');
-    (err as any).status = 404;
-    throw err;
-  }
-
-  if (doc.owner_id !== user.id) {
-    const err = new Error('Only the document owner can delete it');
-    (err as any).status = 403;
-    throw err;
-  }
+  const { doc } = await authorizeDocument(db, user, documentId, 'delete');
 
   await deleteDocumentRecord(db, documentId);
 

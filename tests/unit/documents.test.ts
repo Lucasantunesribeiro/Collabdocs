@@ -84,9 +84,19 @@ describe('createDocument', () => {
     expect(doc.title).toBe('New Document');
   });
 
-  it('defaults visibility to public when not specified', async () => {
+  it('defaults visibility to private when not specified', async () => {
     const doc = await createDocument(mockDb, owner, { title: 'Test' });
+    expect(doc.visibility).toBe('private');
+  });
+
+  it('sets visibility to public only when explicitly requested', async () => {
+    const doc = await createDocument(mockDb, owner, { title: 'Open', visibility: 'public' });
     expect(doc.visibility).toBe('public');
+  });
+
+  it('treats unknown visibility values as private', async () => {
+    const doc = await createDocument(mockDb, owner, { title: 'Odd', visibility: 'everyone' });
+    expect(doc.visibility).toBe('private');
   });
 
   it('sets visibility to private when explicitly requested', async () => {
@@ -101,7 +111,7 @@ describe('createDocument', () => {
       doc.id,
       owner.id,
       'Tracked',
-      'public',
+      'private',
       expect.any(String)
     );
   });
@@ -144,13 +154,24 @@ describe('updateDocument', () => {
     expect(result.permission).toBe('write');
   });
 
-  it('throws 403 when user is not owner and not a collaborator', async () => {
+  it('throws 403 when a non-collaborator tries to update a public document', async () => {
     vi.mocked(db.findDocumentById).mockResolvedValueOnce(baseDoc);
     vi.mocked(db.checkCollaboratorAccess).mockResolvedValue(null);
 
     await expect(
       updateDocument(mockDb, stranger, 'doc-1', { title: 'Hijack' })
-    ).rejects.toMatchObject({ message: 'You do not have write permission for this document' });
+    ).rejects.toMatchObject({ status: 403 });
+    expect(vi.mocked(db.updateDocumentRecord)).not.toHaveBeenCalled();
+  });
+
+  it('throws 404 (not 403) when a stranger tries to update a private document', async () => {
+    vi.mocked(db.findDocumentById).mockResolvedValueOnce({ ...baseDoc, visibility: 'private' });
+    vi.mocked(db.checkCollaboratorAccess).mockResolvedValue(null);
+
+    await expect(
+      updateDocument(mockDb, stranger, 'doc-1', { title: 'Hijack' })
+    ).rejects.toMatchObject({ status: 404, message: 'Document not found' });
+    expect(vi.mocked(db.updateDocumentRecord)).not.toHaveBeenCalled();
   });
 
   it('throws 403 when collaborator only has read permission', async () => {
@@ -159,7 +180,8 @@ describe('updateDocument', () => {
 
     await expect(
       updateDocument(mockDb, stranger, 'doc-1', { content: 'attempt' })
-    ).rejects.toMatchObject({ message: 'You do not have write permission for this document' });
+    ).rejects.toMatchObject({ status: 403 });
+    expect(vi.mocked(db.updateDocumentRecord)).not.toHaveBeenCalled();
   });
 
   it('throws 404 when document does not exist', async () => {
@@ -171,9 +193,6 @@ describe('updateDocument', () => {
   });
 
   it('throws 400 when neither content nor title is provided', async () => {
-    vi.mocked(db.findDocumentById).mockResolvedValueOnce(baseDoc);
-    vi.mocked(db.checkCollaboratorAccess).mockResolvedValue(null);
-
     await expect(
       updateDocument(mockDb, owner, 'doc-1', {})
     ).rejects.toMatchObject({ message: expect.stringContaining('at least one field') });
@@ -211,12 +230,23 @@ describe('deleteDocument', () => {
     expect(vi.mocked(db.deleteDocumentRecord)).toHaveBeenCalledWith(mockDb, 'doc-2');
   });
 
-  it('throws 403 when a non-owner tries to delete', async () => {
+  it('throws 403 when a non-owner tries to delete a public document', async () => {
     vi.mocked(db.findDocumentById).mockResolvedValueOnce(deletableDoc);
 
     await expect(
       deleteDocument(mockDb, stranger, 'doc-2')
-    ).rejects.toMatchObject({ message: 'Only the document owner can delete it' });
+    ).rejects.toMatchObject({ status: 403 });
+    expect(vi.mocked(db.deleteDocumentRecord)).not.toHaveBeenCalled();
+  });
+
+  it('throws 403 when an editor collaborator tries to delete', async () => {
+    vi.mocked(db.findDocumentById).mockResolvedValueOnce({ ...deletableDoc, visibility: 'private' });
+    vi.mocked(db.checkCollaboratorAccess).mockResolvedValue('write');
+
+    await expect(
+      deleteDocument(mockDb, stranger, 'doc-2')
+    ).rejects.toMatchObject({ status: 403 });
+    expect(vi.mocked(db.deleteDocumentRecord)).not.toHaveBeenCalled();
   });
 
   it('throws 404 when document does not exist', async () => {

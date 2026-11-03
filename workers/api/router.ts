@@ -14,7 +14,7 @@ import {
   handleHealthCheck,
   logRequest,
 } from './handlers';
-import { hasDocumentAccess } from '../infrastructure/db';
+import { buildVerifiedSessionUrl, canConnect, resolveRealtimeRole } from '../collaboration/access';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -146,7 +146,7 @@ export default {
     // /api/documents/:id/ws — WebSocket upgrade for real-time collaboration
     const wsMatch = path.match(/^\/api\/documents\/([^/]+)\/ws$/);
     if (wsMatch && method === 'GET') {
-      const documentId = wsMatch[1];
+      const documentId = wsMatch[1].toLowerCase();
       if (!isValidUUID(documentId)) {
         return timed(
           Promise.resolve(
@@ -194,30 +194,20 @@ export default {
         );
       }
 
-      // Authorization: verify the authenticated user has access to this document.
-      // This prevents a valid JWT holder from joining sessions for documents they
-      // don't own or haven't been granted collaborator access to.
-      const allowed = await hasDocumentAccess(env.DB, documentId, user.id, user.email);
-      if (!allowed) {
-        return timed(
-          Promise.resolve(
-            corsResponse(
-              403,
-              JSON.stringify({ error: 'Forbidden: you do not have access to this document' }),
-              request,
-              env.ALLOWED_ORIGINS ?? '',
-              { 'Content-Type': 'application/json' }
-            )
-          )
-        );
+      // Autorização ANTES de aceitar o WebSocket: papel resolvido no servidor
+      // (API .NET quando DOCUMENTS_API_URL está definida; senão D1), fail-closed.
+      // Sem acesso => 404, igual a documento inexistente (não vaza existência).
+      const token = new URL(request.url).searchParams.get('token') ?? '';
+      const role = await resolveRealtimeRole(env, documentId, user, token);
+      if (!canConnect(role)) {
+        return timed(Promise.resolve(notFound(request, env)));
       }
 
-      // Build a new URL with server-verified identity; the DO trusts only these params.
-      const doUrl = new URL(request.url);
-      doUrl.searchParams.set('__verified_userId', user.id);
-      doUrl.searchParams.set('__verified_userName', user.name);
-      doUrl.searchParams.set('__verified_email', user.email);
-      const verifiedRequest = new Request(doUrl.toString(), request);
+      // O DO confia apenas nestes parâmetros; token e "__verified_*" do cliente são descartados.
+      const verifiedRequest = new Request(
+        buildVerifiedSessionUrl(request.url, documentId, user, role),
+        request
+      );
 
       // Route to the Durable Object for this document session
       const id = env.COLLAB_SESSIONS.idFromName(documentId);

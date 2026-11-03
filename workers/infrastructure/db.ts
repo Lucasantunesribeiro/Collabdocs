@@ -59,7 +59,7 @@ export async function findDocumentsByUser(
            d.visibility = 'public'
            OR d.owner_id = ?
            OR (dc.user_id = ? AND dc.permission IN ('read', 'write', 'owner'))
-           OR (dc.user_email = ? AND dc.permission IN ('read', 'write', 'owner'))
+           OR (lower(dc.user_email) = lower(?) AND dc.permission IN ('read', 'write', 'owner'))
          ORDER BY d.updated_at DESC`
       )
       .bind(userId, userId, email)
@@ -221,7 +221,7 @@ export async function addCollaboratorRecord(
   // Upsert: update if exists, insert if not
   const existing = await db
     .prepare(
-      'SELECT id FROM document_collaborators WHERE document_id = ? AND user_email = ?'
+      'SELECT id FROM document_collaborators WHERE document_id = ? AND lower(user_email) = lower(?)'
     )
     .bind(documentId, email)
     .first();
@@ -231,7 +231,7 @@ export async function addCollaboratorRecord(
       .prepare(
         `UPDATE document_collaborators
          SET permission = ?, updated_at = datetime('now')
-         WHERE document_id = ? AND user_email = ?`
+         WHERE document_id = ? AND lower(user_email) = lower(?)`
       )
       .bind(permission, documentId, email)
       .run();
@@ -240,9 +240,10 @@ export async function addCollaboratorRecord(
     await db
       .prepare(
         `INSERT INTO document_collaborators
-           (id, document_id, user_email, permission, added_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+           (id, document_id, user_id, user_email, permission, added_by, created_at, updated_at)
+         VALUES (?, ?, '', ?, ?, ?, datetime('now'), datetime('now'))`
       )
+      // user_id é NOT NULL (migrations/0004); o convite é vinculado pelo e-mail.
       .bind(collabId, documentId, email, permission, userId)
       .run();
   }
@@ -255,46 +256,13 @@ export async function removeCollaboratorRecord(
 ): Promise<void> {
   const result = await db
     .prepare(
-      'DELETE FROM document_collaborators WHERE document_id = ? AND user_email = ?'
+      'DELETE FROM document_collaborators WHERE document_id = ? AND lower(user_email) = lower(?)'
     )
     .bind(documentId, email)
     .run();
 
   if (result.meta.changes === 0) {
     throw new Error('Collaborator not found');
-  }
-}
-
-/**
- * Returns true if the user may access the document:
- * owner, explicit collaborator (by userId or email), or the document is public.
- */
-export async function hasDocumentAccess(
-  db: D1Database,
-  documentId: string,
-  userId: string,
-  email: string
-): Promise<boolean> {
-  try {
-    const row = await db
-      .prepare(
-        `SELECT 1 FROM documents d
-         LEFT JOIN document_collaborators dc ON d.id = dc.document_id
-         WHERE d.id = ?
-           AND (
-             d.visibility = 'public'
-             OR d.owner_id = ?
-             OR (dc.user_id = ? AND dc.permission IN ('read', 'write', 'owner'))
-             OR (dc.user_email = ? AND dc.permission IN ('read', 'write', 'owner'))
-           )
-         LIMIT 1`
-      )
-      .bind(documentId, userId, userId, email)
-      .first();
-    return row !== null;
-  } catch {
-    // Fail-open: if the DB is unavailable don't block the session
-    return true;
   }
 }
 
@@ -308,12 +276,22 @@ export async function checkCollaboratorAccess(
     const row = await db
       .prepare(
         `SELECT permission FROM document_collaborators
-         WHERE document_id = ? AND (user_id = ? OR user_email = ?)`
+         WHERE document_id = ?
+           AND ((user_id IS NOT NULL AND user_id <> '' AND user_id = ?)
+                OR (? <> '' AND lower(user_email) = lower(?)))
+         ORDER BY CASE permission WHEN 'owner' THEN 1 WHEN 'write' THEN 2 WHEN 'read' THEN 3 ELSE 4 END
+         LIMIT 1`
       )
-      .bind(documentId, userId, email)
+      .bind(documentId, userId, email ?? '', email ?? '')
       .first();
     return row ? (row.permission as string) : null;
-  } catch {
+  } catch (err) {
+    // Fail-closed: sem conseguir ler a permissão, o usuário é tratado como
+    // não colaborador (o documento continua acessível só ao dono / se público).
+    logger.warn('checkCollaboratorAccess failed', {
+      documentId,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }

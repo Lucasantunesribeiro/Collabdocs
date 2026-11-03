@@ -17,6 +17,11 @@ export interface Env {
    * Falls back to http://localhost:3000 if empty or not set.
    */
   ALLOWED_ORIGINS: string;
+  /**
+   * URL base da API .NET (ex.: https://api.exemplo.com/api). Quando definida, o Worker
+   * consulta GET {url}/documents/{id} com o JWT do usuário para autorizar o WebSocket.
+   */
+  DOCUMENTS_API_URL?: string;
   /** Durable Object namespace for real-time collaboration sessions. */
   COLLAB_SESSIONS: DurableObjectNamespace;
   /** Durable Object namespace for per-IP rate limiting. */
