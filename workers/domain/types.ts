@@ -20,6 +20,8 @@ export interface AuthenticatedUser {
   email: string;
   name: string;
   provider: string;
+  /** Expiração do JWT (segundos desde epoch), quando conhecida. */
+  exp?: number;
 }
 
 export interface Permission {

@@ -1,5 +1,5 @@
-import { canConnect, VERIFIED_PARAMS } from './access';
-import { parseClientMessage, type SessionIdentity } from './messages';
+import { canConnect, REAUTH_CLOSE_CODE, VERIFIED_PARAMS } from './access';
+import { isSessionExpired, parseClientMessage, type SessionIdentity } from './messages';
 import { ALL_ROLES, type DocumentRole } from '../domain/authorization';
 
 export interface Env {
@@ -42,8 +42,10 @@ export class DocumentSession {
     const documentId = url.searchParams.get(VERIFIED_PARAMS.documentId) || '';
     const rawRole = url.searchParams.get(VERIFIED_PARAMS.role) as DocumentRole | null;
     const role: DocumentRole = rawRole && ALL_ROLES.includes(rawRole) ? rawRole : 'none';
+    const expiresAt = Number(url.searchParams.get(VERIFIED_PARAMS.expiresAt));
 
-    if (!userId || !documentId) {
+    // Sem identidade ou sem prazo válido (ausente/vencido) => não abre a sessão.
+    if (!userId || !documentId || isSessionExpired({ expiresAt })) {
       return new Response('Unauthorized', { status: 401 });
     }
     if (!canConnect(role)) {
@@ -51,7 +53,7 @@ export class DocumentSession {
     }
 
     const { 0: client, 1: server } = new WebSocketPair();
-    this.handleSession(server, { userId, userName, documentId, role });
+    this.handleSession(server, { userId, userName, documentId, role, expiresAt });
 
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -75,9 +77,25 @@ export class DocumentSession {
       JSON.stringify({ type: 'connected', users: connectedUsers, role: identity.role })
     );
 
+    // Ao vencer o prazo da autorização, encerra a sessão; o cliente reconecta e o
+    // router resolve o papel de novo (pega revogações e mudança de visibilidade).
+    const expire = () => {
+      this.clients.delete(clientId);
+      try {
+        socket.close(REAUTH_CLOSE_CODE, 'reauth');
+      } catch {
+        /* já fechado */
+      }
+    };
+    const timer = setTimeout(expire, Math.max(0, identity.expiresAt - Date.now()));
+
     socket.addEventListener('message', (event) => {
       const result = parseClientMessage(event.data, identity);
       if (!result.ok) {
+        if (result.reason === 'expired') {
+          expire();
+          return;
+        }
         if (result.reason === 'forbidden') {
           socket.send(JSON.stringify({ type: 'error', error: 'forbidden', message: 'Read-only access' }));
         }
@@ -87,6 +105,7 @@ export class DocumentSession {
     });
 
     socket.addEventListener('close', () => {
+      clearTimeout(timer);
       this.clients.delete(clientId);
       this.broadcast(
         { type: 'leave', userId: identity.userId, userName: identity.userName, documentId: identity.documentId },
@@ -95,6 +114,7 @@ export class DocumentSession {
     });
 
     socket.addEventListener('error', () => {
+      clearTimeout(timer);
       this.clients.delete(clientId);
     });
   }
@@ -104,6 +124,12 @@ export class DocumentSession {
     for (const [id, client] of this.clients) {
       if (id === excludeClientId) continue;
       try {
+        // Destinatário com autorização vencida não recebe mais conteúdo.
+        if (isSessionExpired(client.identity)) {
+          this.clients.delete(id);
+          client.socket.close(REAUTH_CLOSE_CODE, 'reauth');
+          continue;
+        }
         client.socket.send(payload);
       } catch {
         this.clients.delete(id);

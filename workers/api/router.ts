@@ -14,7 +14,12 @@ import {
   handleHealthCheck,
   logRequest,
 } from './handlers';
-import { buildVerifiedSessionUrl, canConnect, resolveRealtimeRole } from '../collaboration/access';
+import {
+  buildVerifiedSessionUrl,
+  canConnect,
+  computeSessionExpiry,
+  resolveRealtimeRole,
+} from '../collaboration/access';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -205,7 +210,8 @@ export default {
 
       // O DO confia apenas nestes parâmetros; token e "__verified_*" do cliente são descartados.
       const verifiedRequest = new Request(
-        buildVerifiedSessionUrl(request.url, documentId, user, role),
+        // Prazo da sessão: min(exp do JWT, agora + 10 min). Ao vencer, o DO fecha com 4001.
+        buildVerifiedSessionUrl(request.url, documentId, user, role, computeSessionExpiry(user.exp)),
         request
       );
 

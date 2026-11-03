@@ -38,7 +38,8 @@ export async function resolveRealtimeRole(
       );
       if (!res.ok) return 'none';
       const body = (await res.json()) as { document?: { id?: string; permission?: unknown; is_owner?: unknown } };
-      if (body?.document?.id && String(body.document.id).toLowerCase() !== documentId.toLowerCase()) {
+      // A resposta precisa ser do mesmo documento pedido (sem id => nega).
+      if (!body?.document?.id || String(body.document.id).toLowerCase() !== documentId.toLowerCase()) {
         return 'none';
       }
       const role = roleFromApiPermission(body?.document?.permission);
@@ -65,7 +66,34 @@ export const VERIFIED_PARAMS = {
   email: '__verified_email',
   role: '__verified_role',
   documentId: '__verified_documentId',
+  expiresAt: '__verified_expiresAt',
 } as const;
+
+/**
+ * Duração máxima de uma sessão WebSocket autorizada. O papel é resolvido uma vez,
+ * no upgrade; ao fim deste prazo o Durable Object fecha a conexão (código
+ * {@link REAUTH_CLOSE_CODE}) e o cliente reconecta, passando de novo pela
+ * autorização. Assim, revogar um colaborador ou tornar o documento privado
+ * corta o tempo real em no máximo este intervalo.
+ */
+export const MAX_REALTIME_SESSION_MS = 10 * 60 * 1000;
+
+/** Código de fechamento (faixa de aplicação 4000-4999): "reautentique e reconecte". */
+export const REAUTH_CLOSE_CODE = 4001;
+
+/**
+ * Instante (ms desde epoch) em que a sessão expira: o menor entre a expiração do JWT
+ * e agora + {@link MAX_REALTIME_SESSION_MS}.
+ */
+export function computeSessionExpiry(
+  tokenExpSeconds: number | undefined,
+  nowMs: number = Date.now(),
+  maxMs: number = MAX_REALTIME_SESSION_MS
+): number {
+  const cap = nowMs + maxMs;
+  if (typeof tokenExpSeconds !== 'number' || !Number.isFinite(tokenExpSeconds)) return cap;
+  return Math.min(cap, tokenExpSeconds * 1000);
+}
 
 /**
  * Monta a URL encaminhada ao Durable Object: remove o token e qualquer parâmetro
@@ -75,7 +103,8 @@ export function buildVerifiedSessionUrl(
   requestUrl: string,
   documentId: string,
   user: AuthenticatedUser,
-  role: DocumentRole
+  role: DocumentRole,
+  expiresAtMs: number = computeSessionExpiry(user.exp)
 ): string {
   const url = new URL(requestUrl);
   for (const key of Array.from(url.searchParams.keys())) {
@@ -86,6 +115,7 @@ export function buildVerifiedSessionUrl(
   url.searchParams.set(VERIFIED_PARAMS.email, user.email);
   url.searchParams.set(VERIFIED_PARAMS.role, role);
   url.searchParams.set(VERIFIED_PARAMS.documentId, documentId);
+  url.searchParams.set(VERIFIED_PARAMS.expiresAt, String(Math.floor(expiresAtMs)));
   return url.toString();
 }
 

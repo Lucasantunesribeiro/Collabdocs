@@ -16,6 +16,9 @@ interface CollaborativeEditorProps {
   readOnly?: boolean;
 }
 
+/** Código de fechamento enviado pelo Worker quando a autorização da sessão vence. */
+const REAUTH_CLOSE_CODE = 4001;
+
 function useCollaboration(
   documentId: string,
   token: string,
@@ -30,25 +33,45 @@ function useCollaboration(
     if (!documentId || documentId === 'demo' || !token) return;
 
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'wss://collab-docs.collabdocs.workers.dev';
-    // Pass JWT as ?token= because browsers cannot set custom headers on WS upgrades.
-    // The Worker router verifies the token and injects server-trusted identity params.
-    const ws = new WebSocket(
-      `${wsUrl}/api/documents/${documentId}/ws?token=${encodeURIComponent(token)}`
-    );
+    let disposed = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'connected') setConnectedUsers(msg.users);
-        else if (msg.type === 'join') setConnectedUsers(prev => [...prev, { userId: msg.userId, userName: msg.userName }]);
-        else if (msg.type === 'leave') setConnectedUsers(prev => prev.filter(u => u.userId !== msg.userId));
-        else if (msg.type === 'update' && typeof msg.content === 'string') onRemoteUpdateRef.current(msg.content);
-      } catch { /* ignore malformed messages */ }
+    const connect = () => {
+      // Pass JWT as ?token= because browsers cannot set custom headers on WS upgrades.
+      // The Worker router verifies the token and injects server-trusted identity params.
+      const ws = new WebSocket(
+        `${wsUrl}/api/documents/${documentId}/ws?token=${encodeURIComponent(token)}`
+      );
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'connected') setConnectedUsers(msg.users);
+          else if (msg.type === 'join') setConnectedUsers(prev => [...prev, { userId: msg.userId, userName: msg.userName }]);
+          else if (msg.type === 'leave') setConnectedUsers(prev => prev.filter(u => u.userId !== msg.userId));
+          else if (msg.type === 'update' && typeof msg.content === 'string') onRemoteUpdateRef.current(msg.content);
+        } catch { /* ignore malformed messages */ }
+      };
+
+      // 4001 = prazo da autorização venceu no servidor: reconecta para o Worker
+      // reavaliar o papel. Se o acesso foi revogado, o novo upgrade é recusado e
+      // a sessão em tempo real simplesmente termina (sem laço de reconexão).
+      ws.onclose = (event) => {
+        if (disposed || event.code !== REAUTH_CLOSE_CODE) return;
+        setConnectedUsers([]);
+        reconnectTimer = setTimeout(connect, 500);
+      };
+
+      ws.onerror = () => {}; // silent fail for demo
+      wsRef.current = ws;
     };
 
-    ws.onerror = () => {}; // silent fail for demo
-    wsRef.current = ws;
-    return () => ws.close();
+    connect();
+    return () => {
+      disposed = true;
+      clearTimeout(reconnectTimer);
+      wsRef.current?.close();
+    };
   }, [documentId, token]);
 
   const broadcast = useCallback((content: string) => {

@@ -8,6 +8,8 @@ export interface SessionIdentity {
   userName: string;
   documentId: string;
   role: DocumentRole;
+  /** Fim da autorização desta sessão (ms desde epoch); depois disso nada é aceito. */
+  expiresAt: number;
 }
 
 export type OutboundMessage =
@@ -16,15 +18,26 @@ export type OutboundMessage =
 
 export type InboundResult =
   | { ok: true; message: OutboundMessage }
-  | { ok: false; reason: 'malformed' | 'forbidden' | 'too_large' | 'unsupported' };
+  | { ok: false; reason: 'malformed' | 'forbidden' | 'too_large' | 'unsupported' | 'expired' };
+
+export function isSessionExpired(identity: Pick<SessionIdentity, 'expiresAt'>, nowMs: number = Date.now()): boolean {
+  return !Number.isFinite(identity.expiresAt) || nowMs >= identity.expiresAt;
+}
 
 /**
  * Valida uma mensagem do cliente ANTES de retransmiti-la:
+ *  - sessão com autorização vencida => expired (nada é retransmitido);
  *  - somente 'update' e 'cursor' são aceitos ('join'/'leave'/'connected' são do servidor);
  *  - 'update' exige papel com send_realtime_update (viewer/leitor público => forbidden);
  *  - userId/userName/documentId vêm SEMPRE da identidade verificada, nunca do cliente.
  */
-export function parseClientMessage(raw: unknown, identity: SessionIdentity): InboundResult {
+export function parseClientMessage(
+  raw: unknown,
+  identity: SessionIdentity,
+  nowMs: number = Date.now()
+): InboundResult {
+  // Autorização vencida (prazo da sessão ou do JWT): o DO fecha e o cliente reautentica.
+  if (isSessionExpired(identity, nowMs)) return { ok: false, reason: 'expired' };
   if (typeof raw !== 'string') return { ok: false, reason: 'unsupported' };
   if (raw.length > MAX_MESSAGE_BYTES) return { ok: false, reason: 'too_large' };
 

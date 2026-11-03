@@ -28,10 +28,12 @@ import {
 import { getDocumentById } from '../../workers/application/documents';
 import {
   buildVerifiedSessionUrl,
+  computeSessionExpiry,
+  MAX_REALTIME_SESSION_MS,
   resolveRealtimeRole,
   VERIFIED_PARAMS,
 } from '../../workers/collaboration/access';
-import { parseClientMessage, MAX_MESSAGE_BYTES } from '../../workers/collaboration/messages';
+import { isSessionExpired, parseClientMessage, MAX_MESSAGE_BYTES } from '../../workers/collaboration/messages';
 import type { AuthenticatedUser } from '../../workers/domain/types';
 
 const mockDb = {} as D1Database;
@@ -225,6 +227,11 @@ describe('resolveRealtimeRole', () => {
     await expect(resolveRealtimeRole(env('https://api.test/api'), DOC_ID, actor, 'jwt', fetchImpl)).resolves.toBe('none');
   });
 
+  it('denies when the API response has no document id', async () => {
+    const fetchImpl = apiResponse(200, { document: { permission: 'owner' } });
+    await expect(resolveRealtimeRole(env('https://api.test/api'), DOC_ID, actor, 'jwt', fetchImpl)).resolves.toBe('none');
+  });
+
   it('denies when the API returns a different document id', async () => {
     const fetchImpl = apiResponse(200, { document: { id: '11111111-1111-4111-8111-111111111111', permission: 'owner' } });
     await expect(resolveRealtimeRole(env('https://api.test/api'), DOC_ID, actor, 'jwt', fetchImpl)).resolves.toBe('none');
@@ -266,13 +273,64 @@ describe('buildVerifiedSessionUrl', () => {
     expect(url.searchParams.getAll(VERIFIED_PARAMS.userId)).toEqual([actor.id]);
     expect(url.searchParams.get(VERIFIED_PARAMS.documentId)).toBe(DOC_ID);
   });
+
+  it('sets a server-computed expiry and ignores one supplied by the client', () => {
+    const url = new URL(
+      buildVerifiedSessionUrl(
+        `https://w.test/api/documents/${DOC_ID}/ws?token=jwt&__verified_expiresAt=99999999999999`,
+        DOC_ID,
+        actor,
+        'editor',
+        1_000
+      )
+    );
+    expect(url.searchParams.getAll(VERIFIED_PARAMS.expiresAt)).toEqual(['1000']);
+  });
+});
+
+describe('computeSessionExpiry (revalidação periódica do WebSocket)', () => {
+  const now = 1_700_000_000_000;
+
+  it('caps the session at MAX_REALTIME_SESSION_MS even for long-lived tokens', () => {
+    const exp30d = Math.floor(now / 1000) + 30 * 24 * 3600;
+    expect(computeSessionExpiry(exp30d, now)).toBe(now + MAX_REALTIME_SESSION_MS);
+  });
+
+  it('ends the session when the JWT expires, if that comes first', () => {
+    const exp = Math.floor(now / 1000) + 60;
+    expect(computeSessionExpiry(exp, now)).toBe(exp * 1000);
+  });
+
+  it('falls back to the cap when exp is unknown', () => {
+    expect(computeSessionExpiry(undefined, now)).toBe(now + MAX_REALTIME_SESSION_MS);
+  });
+
+  it('isSessionExpired is fail-closed for missing/invalid expiry', () => {
+    expect(isSessionExpired({ expiresAt: NaN }, now)).toBe(true);
+    expect(isSessionExpired({ expiresAt: now }, now)).toBe(true);
+    expect(isSessionExpired({ expiresAt: now + 1 }, now)).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
 // WebSocket: autorização por mensagem dentro do Durable Object
 // ---------------------------------------------------------------------------
 describe('parseClientMessage', () => {
-  const identity = (role: DocumentRole) => ({ userId: 'user-actor', userName: 'Actor', documentId: DOC_ID, role });
+  const identity = (role: DocumentRole, expiresAt = Date.now() + 60_000) => ({
+    userId: 'user-actor',
+    userName: 'Actor',
+    documentId: DOC_ID,
+    role,
+    expiresAt,
+  });
+
+  it('rejects every message once the session authorization has expired (even from the owner)', () => {
+    const expired = identity('owner', Date.now() - 1);
+    expect(parseClientMessage(JSON.stringify({ type: 'update', content: 'late' }), expired))
+      .toEqual({ ok: false, reason: 'expired' });
+    expect(parseClientMessage(JSON.stringify({ type: 'cursor', cursor: { line: 0, ch: 0 } }), expired))
+      .toEqual({ ok: false, reason: 'expired' });
+  });
 
   it.each<DocumentRole>(['viewer', 'public_reader'])('%s cannot broadcast content updates', (role) => {
     const r = parseClientMessage(JSON.stringify({ type: 'update', content: 'pwned' }), identity(role));
