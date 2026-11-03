@@ -218,7 +218,7 @@ export function CollaborativeEditor({ documentId, initialContent, session, readO
 
   const saveStatusConfig = {
     saved: { icon: 'check_circle', color: 'text-success', text: 'Salvo' },
-    saving: { icon: 'sync', color: 'text-primary', text: 'Salvando...' },
+    saving: { icon: 'sync', color: 'text-primary-light', text: 'Salvando...' },
     error: { icon: 'error', color: 'text-error', text: 'Erro ao salvar' },
   }[saveStatus];
 
@@ -362,7 +362,7 @@ export function CollaborativeEditor({ documentId, initialContent, session, readO
             <span>{content.trim().split(/\s+/).filter(Boolean).length} palavras</span>
             <span>{content.split('\n').length} linhas</span>
             {isTyping && (
-              <span className="flex items-center gap-1 text-primary">
+              <span className="flex items-center gap-1 text-primary-light">
                 <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
                 Digitando...
               </span>

@@ -17,6 +17,8 @@ module.exports = {
         'on-surface': '#e6e1e5',
         'on-surface-variant': '#cac4d0',
         primary: '#335cff',
+        // Variante clara para texto/ícones sobre fundo escuro (contraste 7.2:1 em #1c1b1f).
+        'primary-light': '#8fa3ff',
         'primary-dark': '#003fe5',
         'primary-container': '#001a71',
         'on-primary': '#ffffff',

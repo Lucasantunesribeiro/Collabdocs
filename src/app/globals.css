@@ -19,6 +19,20 @@
   }
 }
 
+/* Foco visível para navegação por teclado (fora de @layer para vencer "focus:outline-none").
+   O textarea do editor fica de fora: o cursor de texto já indica o foco. */
+:focus-visible:not(textarea) {
+  outline: 2px solid #8fa3ff !important;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 @layer utilities {
   .material-symbols-outlined {
     font-family: 'Material Symbols Outlined';
@@ -41,8 +55,9 @@
     -webkit-backdrop-filter: blur(20px);
     border: 1px solid rgba(255,255,255,0.12);
   }
+  /* Tons claros: o gradiente anterior (#003fe5 -> #335cff) tinha contraste ~2.5:1 no fundo escuro. */
   .gradient-text {
-    background: linear-gradient(135deg, #003fe5, #335cff);
+    background: linear-gradient(135deg, #8fa3ff, #cbc2ff);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;

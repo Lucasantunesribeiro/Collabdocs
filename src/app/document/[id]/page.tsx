@@ -168,7 +168,7 @@ export default function DocumentPage() {
             ].map((item) => (
               <div key={item.label} className="bg-surface-container rounded-xl p-4 text-center">
                 <span
-                  className="material-symbols-outlined text-primary text-2xl block mb-2"
+                  className="material-symbols-outlined text-primary-light text-2xl block mb-2"
                   style={{ fontVariationSettings: "'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24" }}
                 >
                   {item.icon}
