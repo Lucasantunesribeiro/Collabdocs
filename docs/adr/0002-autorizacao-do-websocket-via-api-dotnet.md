@@ -19,5 +19,6 @@ Replicar documentos e colaboradores no D1 criaria duas fontes da verdade para pe
 ## Consequências
 
 - Cada conexão WebSocket custa uma chamada HTTP à API .NET, o que adiciona latência no upgrade. As mensagens seguintes não fazem chamada.
-- O papel é fixado no upgrade. Revogar um colaborador não derruba uma sessão aberta. Isso é uma limitação conhecida, e a mitigação futura é revalidar periodicamente ou ao receber `update`.
+- O papel é fixado no upgrade, mas a sessão tem prazo: `min(exp do JWT, agora + 10 min)`, calculado pelo router e enviado em `__verified_expiresAt`. Ao vencer, o Durable Object fecha com `4001`, descarta mensagens recebidas depois do prazo e não entrega broadcast a quem venceu. O cliente reconecta em `4001` e passa de novo pela autorização. Revogar um colaborador ou tornar o documento privado corta o tempo real em no máximo 10 minutos. Uma revogação instantânea exigiria a API .NET notificar o Worker, o que não foi feito.
+- Cada reconexão (a cada 10 min por cliente) custa outra chamada à API .NET.
 - O deploy do Worker precisa da variável `DOCUMENTS_API_URL`. Sem ela, o tempo real nega documentos que só existem no PostgreSQL.

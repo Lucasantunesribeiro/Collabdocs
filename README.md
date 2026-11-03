@@ -21,7 +21,7 @@ flowchart LR
     A -.opcional.-> MQ[(RabbitMQ<br/>Outbox)]
 ```
 
-- O mesmo segredo HS256 (`NEXTAUTH_SECRET`) assina o JWT do NextAuth e é verificado pela API .NET (`Jwt:Secret`) e pelo Worker.
+- O mesmo segredo HS256 (`NEXTAUTH_SECRET`) assina o JWT do NextAuth e é verificado pela API .NET (`Jwt:Secret`) e pelo Worker. Os dois aceitam só `alg: HS256` e exigem `exp`.
 - O conteúdo editado é salvo pelo cliente via `PUT /api/documents/{id}` na API .NET. O WebSocket apenas retransmite atualizações entre clientes conectados. O Durable Object não persiste conteúdo.
 - Redis e RabbitMQ são opcionais. Sem `ConnectionStrings:Redis` a API usa `NullDocumentCacheService`. Sem `RabbitMQ:Host` as mensagens do outbox ficam no banco.
 
@@ -53,6 +53,7 @@ Regras adicionais:
 - A permissão `owner` não pode ser concedida pela API (400). Uma linha legada com `owner` vale como editor. Só `Document.OwnerId` exclui, muda a visibilidade e gerencia colaboradores.
 - O dono não pode se convidar. Um novo convite para o mesmo e-mail atualiza a permissão.
 - No WebSocket, o Worker valida o JWT e resolve o papel **antes** do upgrade. A checagem é fail-closed: erro de rede ou de banco nega o acesso. O Durable Object confia só nos parâmetros `__verified_*` injetados pelo router. Ele também ignora `userId`/`userName` enviados pelo cliente e rejeita tipos de mensagem do servidor (`join`, `leave`).
+- A sessão WebSocket tem prazo: o menor entre o `exp` do JWT e 10 minutos. Ao vencer, o Durable Object fecha com o código `4001` e o cliente reconecta, passando de novo pela autorização. Mensagens recebidas após o prazo são descartadas.
 
 Decisões registradas em [`docs/adr/`](docs/adr).
 
@@ -152,7 +153,8 @@ npm run build && npm start & npx playwright test
 
 ## Limitações conhecidas
 
-- **Revogação não derruba sessões abertas:** a autorização do WebSocket acontece no upgrade. Um colaborador removido continua conectado até fechar a conexão.
+- **Revogação no tempo real não é instantânea:** o papel é resolvido no upgrade e reavaliado a cada reconexão. Um colaborador removido (ou um documento que ficou privado) perde o WebSocket em até 10 minutos. Na API REST a revogação vale na requisição seguinte.
+- **`middleware.ts` na raiz não é carregado pelo Next.js**, porque o app fica em `src/` (o build gera `middleware-manifest.json` vazio). As páginas checam a sessão no cliente. Os dados ficam protegidos pela API .NET, que valida o JWT em toda requisição. Ativar o middleware (mover para `src/`) exige revisar o `matcher`, porque hoje ele bloquearia `/` e `/document/demo`, usados pelos testes E2E.
 - **Sem `DOCUMENTS_API_URL` o tempo real não autoriza documentos da API .NET.** O fallback lê o D1 do Worker, que não recebe esses documentos. O resultado é 404 no upgrade.
 - O JWT vai na query string do WebSocket (`?token=`), porque o navegador não permite cabeçalho no upgrade. O router não loga a query, mas proxies intermediários podem logar.
 - **O e-mail do JWT é a identidade do colaborador.** A API confia no e-mail emitido pelo NextAuth/provedor OAuth e não faz verificação própria.
