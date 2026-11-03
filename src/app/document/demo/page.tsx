@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { CollaborativeEditor } from '@/components/CollaborativeEditor';
@@ -51,7 +52,7 @@ export default function DocumentDemoPage() {
       {/* Header */}
       <header className="sticky top-0 z-50 glass border-b border-outline-variant">
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
-          <a href="/" className="flex items-center gap-3 group">
+          <Link href="/" className="flex items-center gap-3 group">
             <div className="w-9 h-9 bg-primary-container rounded-xl flex items-center justify-center">
               <span className="font-display font-bold text-sm gradient-text">CD</span>
             </div>
@@ -61,7 +62,7 @@ export default function DocumentDemoPage() {
               </p>
               <p className="text-xs text-on-surface-variant">Documento Demo</p>
             </div>
-          </a>
+          </Link>
 
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 px-3 py-1.5 bg-success/10 rounded-full border border-success/20">

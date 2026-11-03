@@ -16,7 +16,7 @@ concurrency:
 jobs:
   web:
     name: Web + Worker (typecheck, lint, testes, build)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -38,7 +38,7 @@ jobs:
 
   e2e:
     name: E2E (Playwright)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: web
     timeout-minutes: 25
     steps:
@@ -74,7 +74,7 @@ jobs:
 
   audit:
     name: npm audit (dependências de produção)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -87,7 +87,7 @@ jobs:
 
   dotnet:
     name: .NET (build, unitários, integração)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     defaults:
       run:

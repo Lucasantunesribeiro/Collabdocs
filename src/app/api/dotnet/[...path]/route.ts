@@ -3,10 +3,11 @@ import { buildTargetUrl } from '@/lib/proxy-path'
 
 const DOTNET_API_URL = process.env.DOTNET_API_URL || 'http://localhost:5000/api'
 
-type RouteContext = { params: { path: string[] } }
+type RouteContext = { params: Promise<{ path: string[] }> }
 
 async function proxy(request: NextRequest, { params }: RouteContext): Promise<NextResponse> {
-  const targetUrl = buildTargetUrl(DOTNET_API_URL, params.path)
+  const { path } = await params
+  const targetUrl = buildTargetUrl(DOTNET_API_URL, path)
   if (!targetUrl) {
     return NextResponse.json({ error: 'Not Found' }, { status: 404 })
   }
