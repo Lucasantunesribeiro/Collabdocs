@@ -32,8 +32,9 @@ export default function Dashboard() {
       setError(null)
       const response = await secureApiService.getDocuments(session)
       setDocuments(response.documents)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao carregar documentos')
+    } catch {
+      // Mensagem técnica (status/URL) não ajuda o usuário; detalhes ficam na aba Rede.
+      setError('Não foi possível carregar seus documentos. Verifique a conexão e tente novamente.')
     } finally {
       setLoading(false)
     }
@@ -48,8 +49,8 @@ export default function Dashboard() {
         visibility,
       }, session)
       await loadDocuments()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao criar documento')
+    } catch {
+      setError('Não foi possível criar o documento. Tente novamente.')
     }
   }
 
@@ -83,6 +84,14 @@ export default function Dashboard() {
     return matchesNav && matchesSearch
   })
 
+  const empty = searchQuery
+    ? { title: 'Nenhum resultado', hint: `Nenhum documento corresponde a "${searchQuery}".` }
+    : activeNav === 'shared'
+      ? { title: 'Nada compartilhado com você', hint: 'Quando alguém convidar seu e-mail para um documento, ele aparece aqui.' }
+      : activeNav === 'public'
+        ? { title: 'Nenhum documento público', hint: 'Documentos são privados por padrão. O dono pode torná-los públicos.' }
+        : { title: 'Nenhum documento ainda', hint: 'Crie seu primeiro documento. Ele começa privado: só você vê até compartilhar.' }
+
   const navItems = [
     { id: 'all' as NavItem, icon: 'home', label: 'Início' },
     { id: 'mine' as NavItem, icon: 'description', label: 'Meus Docs' },
@@ -103,6 +112,7 @@ export default function Dashboard() {
           <button
             key={item.id}
             onClick={() => { setActiveNav(item.id); setMobileSidebarOpen(false) }}
+            aria-current={activeNav === item.id ? 'page' : undefined}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
               activeNav === item.id
                 ? 'bg-primary-container text-secondary'
@@ -142,8 +152,9 @@ export default function Dashboard() {
             onClick={() => signOut({ callbackUrl: '/auth/signin' })}
             className="p-1.5 rounded-lg text-on-surface-variant hover:bg-surface-high hover:text-on-surface transition-colors"
             title="Sair"
+            aria-label="Sair"
           >
-            <span className="material-symbols-outlined text-lg">logout</span>
+            <span className="material-symbols-outlined text-lg" aria-hidden="true">logout</span>
           </button>
         </div>
       </div>
@@ -175,13 +186,15 @@ export default function Dashboard() {
             <button
               className="md:hidden p-2 rounded-xl text-on-surface-variant hover:bg-surface-high transition-colors"
               onClick={() => setMobileSidebarOpen(true)}
+              aria-label="Abrir menu"
             >
-              <span className="material-symbols-outlined">menu</span>
+              <span className="material-symbols-outlined" aria-hidden="true">menu</span>
             </button>
             <div className="hidden sm:flex items-center gap-2 bg-surface-container rounded-xl px-4 py-2 border border-outline-variant w-64">
-              <span className="material-symbols-outlined text-on-surface-variant text-xl">search</span>
+              <span className="material-symbols-outlined text-on-surface-variant text-xl" aria-hidden="true">search</span>
               <input
-                type="text"
+                type="search"
+                aria-label="Buscar documentos"
                 placeholder="Buscar documentos..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -192,8 +205,9 @@ export default function Dashboard() {
           <button
             onClick={() => setShowCreateModal(true)}
             className="btn-primary text-sm px-4 py-2 flex items-center gap-2"
+            aria-label="Novo documento"
           >
-            <span className="material-symbols-outlined text-lg">add</span>
+            <span className="material-symbols-outlined text-lg" aria-hidden="true">add</span>
             <span className="hidden sm:inline">Novo Documento</span>
           </button>
         </header>
@@ -210,6 +224,19 @@ export default function Dashboard() {
             </p>
           </div>
 
+          {/* Busca no mobile (no desktop ela fica na barra superior) */}
+          <div className="sm:hidden flex items-center gap-2 bg-surface-container rounded-xl px-4 py-2.5 border border-outline-variant mb-6">
+            <span className="material-symbols-outlined text-on-surface-variant text-xl" aria-hidden="true">search</span>
+            <input
+              type="search"
+              aria-label="Buscar documentos"
+              placeholder="Buscar documentos..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="bg-transparent text-sm text-on-surface placeholder-on-surface-variant outline-none w-full"
+            />
+          </div>
+
           {/* Stats row */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
             {[
@@ -220,7 +247,7 @@ export default function Dashboard() {
             ].map((stat) => (
               <div key={stat.label} className="glass rounded-2xl p-4 flex items-center gap-3">
                 <span
-                  className="material-symbols-outlined text-primary text-2xl"
+                  className="material-symbols-outlined text-primary-light text-2xl"
                   style={{ fontVariationSettings: "'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24" }}
                 >
                   {stat.icon}
@@ -235,10 +262,10 @@ export default function Dashboard() {
 
           {/* Error */}
           {error && (
-            <div className="mb-6 p-4 rounded-xl bg-error-container border border-error/30 flex items-center gap-3">
-              <span className="material-symbols-outlined text-error">error</span>
+            <div role="alert" className="mb-6 p-4 rounded-xl bg-error-container border border-error/30 flex flex-wrap items-center gap-3">
+              <span className="material-symbols-outlined text-error" aria-hidden="true">error</span>
               <p className="text-sm text-on-surface flex-1">{error}</p>
-              <button onClick={loadDocuments} className="text-sm text-secondary underline">
+              <button onClick={loadDocuments} className="text-sm font-medium text-on-surface underline underline-offset-2">
                 Tentar novamente
               </button>
             </div>
@@ -246,19 +273,27 @@ export default function Dashboard() {
 
           {/* Loading */}
           {loading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" aria-busy="true" aria-label="Carregando documentos">
               {[1, 2, 3, 4, 5, 6].map(i => (
                 <div key={i} className="glass rounded-2xl h-48 animate-pulse" />
               ))}
             </div>
-          ) : filteredDocs.length === 0 ? (
-            <div className="glass rounded-3xl p-12 text-center">
-              <span className="material-symbols-outlined text-6xl text-on-surface-variant block mb-4">folder_open</span>
-              <h3 className="font-display font-semibold text-lg text-on-surface mb-2">Nenhum documento aqui</h3>
-              <p className="text-on-surface-variant text-sm mb-6">Crie seu primeiro documento para começar.</p>
-              <button onClick={() => setShowCreateModal(true)} className="btn-primary px-6 py-2.5 text-sm">
-                Criar Documento
-              </button>
+          ) : error && documents.length === 0 ? null : filteredDocs.length === 0 ? (
+            <div className="glass rounded-3xl px-6 py-12 sm:p-12 text-center">
+              <span className="material-symbols-outlined text-6xl text-on-surface-variant block mb-4" aria-hidden="true">
+                {searchQuery ? 'search_off' : 'folder_open'}
+              </span>
+              <h2 className="font-display font-semibold text-lg text-on-surface mb-2">{empty.title}</h2>
+              <p className="text-on-surface-variant text-sm mb-6 max-w-sm mx-auto">{empty.hint}</p>
+              {searchQuery ? (
+                <button onClick={() => setSearchQuery('')} className="px-6 py-2.5 text-sm rounded-xl border border-outline text-on-surface hover:bg-surface-high transition-colors">
+                  Limpar busca
+                </button>
+              ) : (activeNav === 'all' || activeNav === 'mine') ? (
+                <button onClick={() => setShowCreateModal(true)} className="btn-primary px-6 py-2.5 text-sm">
+                  Criar documento
+                </button>
+              ) : null}
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -282,6 +317,7 @@ export default function Dashboard() {
           <button
             key={item.id}
             onClick={() => setActiveNav(item.id)}
+            aria-current={activeNav === item.id ? 'page' : undefined}
             className={`flex-1 flex flex-col items-center gap-1 py-3 text-xs font-medium transition-colors ${
               activeNav === item.id ? 'text-secondary' : 'text-on-surface-variant'
             }`}
