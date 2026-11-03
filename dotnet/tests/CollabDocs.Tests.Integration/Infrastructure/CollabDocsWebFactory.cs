@@ -112,9 +112,13 @@ public class CollabDocsWebFactory : WebApplicationFactory<Program>, IAsyncLifeti
     /// NextAuth produces: { sub, email, name }.
     /// </summary>
     public static string GenerateJwt(string userId, string email, string name)
+        => GenerateJwt(userId, email, name, DateTime.UtcNow.AddHours(1), SecurityAlgorithms.HmacSha256);
+
+    /// <summary>Variante para testes de rejeição: expiração ausente/vencida ou outro algoritmo.</summary>
+    public static string GenerateJwt(string userId, string email, string name, DateTime? expires, string algorithm)
     {
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(TestJwtSecret));
-        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+        var credentials = new SigningCredentials(key, algorithm);
 
         var claims = new[]
         {
@@ -125,7 +129,8 @@ public class CollabDocsWebFactory : WebApplicationFactory<Program>, IAsyncLifeti
 
         var token = new JwtSecurityToken(
             claims: claims,
-            expires: DateTime.UtcNow.AddHours(1),
+            notBefore: expires is { } e && e < DateTime.UtcNow ? e.AddHours(-1) : null,
+            expires: expires,
             signingCredentials: credentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);

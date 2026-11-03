@@ -84,6 +84,11 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         {
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+            // Mesmo contrato do Worker: somente HS256 e "exp" obrigatório.
+            ValidAlgorithms = [SecurityAlgorithms.HmacSha256],
+            RequireExpirationTime = true,
+            ValidateLifetime = true,
+            RequireSignedTokens = true,
             ValidateIssuer = false,
             ValidateAudience = false,
             ClockSkew = TimeSpan.FromMinutes(5)

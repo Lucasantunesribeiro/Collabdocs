@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using CollabDocs.Tests.Integration.Infrastructure;
 using FluentAssertions;
+using Microsoft.IdentityModel.Tokens;
 using Xunit;
 
 namespace CollabDocs.Tests.Integration.Authorization;
@@ -234,5 +235,49 @@ public class DocumentAuthorizationApiTests(CollabDocsWebFactory factory) : IClas
         var id = await CreateDoc(u.Owner);
         (await u.Owner.PutAsJsonAsync($"/api/documents/{id}", new { visibility = "everyone" }))
             .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Editor_CannotRemoveOrDemoteTheOwner()
+    {
+        var (u, id) = await PrivateDocWithCollaborators();
+        // NewUsers: "editor-{tag}@authz.test" => dono é "owner-{tag}@authz.test".
+        var ownerEmail = u.EditorEmail.Replace("editor-", "owner-");
+
+        var removeOwner = new HttpRequestMessage(HttpMethod.Delete, $"/api/documents/{id}/collaborators")
+        { Content = JsonContent.Create(new { email = ownerEmail }) };
+        (await u.Editor.SendAsync(removeOwner)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await u.Editor.PostAsJsonAsync($"/api/documents/{id}/collaborators", new { email = ownerEmail, permission = "read" }))
+            .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        var own = (await Json(await u.Owner.GetAsync($"/api/documents/{id}"))).GetProperty("document");
+        own.GetProperty("permission").GetString().Should().Be("owner");
+        own.GetProperty("is_owner").GetBoolean().Should().BeTrue();
+    }
+
+    public static TheoryData<string> RejectedTokens => new()
+    {
+        "sem-exp",
+        "expirado",
+        "hs384",
+    };
+
+    [Theory]
+    [MemberData(nameof(RejectedTokens))]
+    public async Task InvalidTokens_Get401_EvenForPublicDocs(string kind)
+    {
+        var u = NewUsers();
+        var id = await CreateDoc(u.Owner, "public");
+
+        var token = kind switch
+        {
+            "sem-exp"  => CollabDocsWebFactory.GenerateJwt("x-user", "x@authz.test", "X", null, SecurityAlgorithms.HmacSha256),
+            "expirado" => CollabDocsWebFactory.GenerateJwt("x-user", "x@authz.test", "X", DateTime.UtcNow.AddHours(-1), SecurityAlgorithms.HmacSha256),
+            _          => CollabDocsWebFactory.GenerateJwt("x-user", "x@authz.test", "X", DateTime.UtcNow.AddHours(1), SecurityAlgorithms.HmacSha384),
+        };
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        (await client.GetAsync($"/api/documents/{id}")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 }
