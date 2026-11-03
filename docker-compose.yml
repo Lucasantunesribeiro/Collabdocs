@@ -1,48 +1,63 @@
-version: '3.9'
+# Stack local completa. Valores sensíveis vêm do .env (veja .env.example).
 services:
   frontend:
-    build: .
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8787/api
+        NEXT_PUBLIC_WS_URL: ws://localhost:8787
     ports:
       - "3000:3000"
     environment:
-      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-      - NEXTAUTH_URL=http://localhost:3000
-      # .NET API — Document Management Context (CRUD, business rules, audit logging)
-      - NEXT_PUBLIC_DOTNET_API_URL=http://localhost:5000/api
-      # Cloudflare Worker — Real-Time Collaboration Context (WebSocket, presence)
-      - NEXT_PUBLIC_API_URL=http://localhost:8787/api
-      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
-      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?defina NEXTAUTH_SECRET no .env}
+      NEXTAUTH_URL: http://localhost:3000
+      # Proxy server-side /api/dotnet -> API .NET (rede interna do compose)
+      DOTNET_API_URL: http://dotnet-api:5000/api
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
     depends_on:
       - worker
       - dotnet-api
 
+  # Cloudflare Worker em modo local (WebSocket/presença). O wrangler não usa variáveis
+  # de ambiente do processo como bindings, por isso elas são repassadas com --var.
   worker:
     image: node:20-alpine
     working_dir: /app
     volumes:
       - .:/app
-    command: sh -c "npm install && npx wrangler dev --local --port 8787"
+      - worker_node_modules:/app/node_modules
+    command:
+      - sh
+      - -c
+      - >-
+        npm ci --legacy-peer-deps &&
+        npx wrangler dev --local --ip 0.0.0.0 --port 8787
+        --var "NEXTAUTH_SECRET:$${NEXTAUTH_SECRET}"
+        --var "ALLOWED_ORIGINS:$${ALLOWED_ORIGINS}"
+        --var "DOCUMENTS_API_URL:$${DOCUMENTS_API_URL}"
     ports:
       - "8787:8787"
     environment:
-      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-      - ALLOWED_ORIGINS=http://localhost:3000
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?defina NEXTAUTH_SECRET no .env}
+      ALLOWED_ORIGINS: http://localhost:3000
+      # Autorização do WebSocket consulta a API .NET (fonte da verdade dos documentos)
+      DOCUMENTS_API_URL: http://dotnet-api:5000/api
 
   postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: collabdocs
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-collabdocs}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\""]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -54,16 +69,20 @@ services:
     ports:
       - "5000:5000"
     environment:
-      - ConnectionStrings__Default=Host=postgres;Port=5432;Database=collabdocs;Username=postgres;Password=postgres
-      - Jwt__Secret=${NEXTAUTH_SECRET}
-      - AllowedOrigins__0=http://localhost:3000
-      - RabbitMQ__Host=rabbitmq
-      - RabbitMQ__Port=5672
-      - RabbitMQ__Username=guest
-      - RabbitMQ__Password=guest
-      - RabbitMQ__ExchangeName=collabdocs.events
-      - RabbitMQ__QueueName=collabdocs.documents
-      - ConnectionStrings__Redis=redis:6379
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=collabdocs;Username=${POSTGRES_USER:-collabdocs};Password=${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+      Jwt__Secret: ${NEXTAUTH_SECRET:?defina NEXTAUTH_SECRET no .env}
+      AllowedOrigins__0: http://localhost:3000
+      RabbitMQ__Host: rabbitmq
+      RabbitMQ__Port: "5672"
+      RabbitMQ__Username: ${RABBITMQ_USER:-collabdocs}
+      RabbitMQ__Password: ${RABBITMQ_PASSWORD:?defina RABBITMQ_PASSWORD no .env}
+      RabbitMQ__ExchangeName: collabdocs.events
+      RabbitMQ__QueueName: collabdocs.documents
+      ConnectionStrings__Redis: redis:6379
+    # A imagem aspnet não traz wget: o HEALTHCHECK do Dockerfile (pensado para Lambda)
+    # falharia sempre fora da AWS.
+    healthcheck:
+      disable: true
     depends_on:
       postgres:
         condition: service_healthy
@@ -76,10 +95,10 @@ services:
     image: rabbitmq:3-management-alpine
     ports:
       - "5672:5672"   # AMQP
-      - "15672:15672" # Management UI (http://localhost:15672, guest/guest)
+      - "15672:15672" # UI de gerenciamento (http://localhost:15672)
     environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-collabdocs}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?defina RABBITMQ_PASSWORD no .env}
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 10s
@@ -93,7 +112,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/var/lib/redis
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -104,3 +123,4 @@ volumes:
   postgres_data:
   rabbitmq_data:
   redis_data:
+  worker_node_modules:
