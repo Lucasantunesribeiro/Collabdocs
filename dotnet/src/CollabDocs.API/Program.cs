@@ -22,9 +22,11 @@ using StackExchange.Redis;
 var builder = WebApplication.CreateBuilder(args);
 
 // Database
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("Default")
-        ?? throw new InvalidOperationException("Connection string 'Default' is required")));
+// Aceita formato Npgsql ou URI postgresql:// (Neon/Supabase/Render).
+var defaultConnection = PostgresConnectionString.Normalize(
+    builder.Configuration.GetConnectionString("Default")
+        ?? throw new InvalidOperationException("Connection string 'Default' is required"));
+builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(defaultConnection));
 
 // Repositories
 builder.Services.AddScoped<IDocumentRepository, DocumentRepository>();

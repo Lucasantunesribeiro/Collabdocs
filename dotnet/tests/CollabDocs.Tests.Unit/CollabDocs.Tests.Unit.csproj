@@ -18,5 +18,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\CollabDocs.Application\CollabDocs.Application.csproj" />
     <ProjectReference Include="..\..\src\CollabDocs.Domain\CollabDocs.Domain.csproj" />
+    <ProjectReference Include="..\..\src\CollabDocs.Infrastructure\CollabDocs.Infrastructure.csproj" />
   </ItemGroup>
 </Project>
