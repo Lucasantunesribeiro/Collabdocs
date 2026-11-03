@@ -2,7 +2,9 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package.json package-lock.json .npmrc ./
-RUN npm ci --legacy-peer-deps
+# "npm ci" pode terminar com código 0 sem instalar nada ("Exit handler never called"):
+# a verificação falha o build cedo em vez de "next: not found" mais adiante.
+RUN npm ci --legacy-peer-deps && test -x node_modules/.bin/next
 COPY . .
 # Variáveis NEXT_PUBLIC_* são embutidas no bundle em tempo de build.
 ARG NEXT_PUBLIC_API_URL=http://localhost:8787/api
