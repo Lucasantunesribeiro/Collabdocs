@@ -1,3 +1,13 @@
+# Blueprint do Render (plano free, sem cartão) para a API .NET.
+# Banco: PostgreSQL gratuito no Neon (ou Supabase). A connection string pode ser
+# colada no formato URI que o Neon mostra (postgresql://...?sslmode=require):
+# a API converte para o formato do Npgsql (PostgresConnectionString).
+#
+# Observações do plano free do Render:
+# - o serviço "dorme" após ~15 min sem tráfego; a primeira requisição depois
+#   disso leva dezenas de segundos (cold start);
+# - Redis e RabbitMQ são opcionais e ficam desligados (sem as variáveis, a API
+#   usa NullDocumentCacheService e o outbox fica no banco).
 services:
   - type: web
     name: collabdocs-dotnet-api
@@ -5,23 +15,18 @@ services:
     dockerfilePath: dotnet/src/CollabDocs.API/Dockerfile
     dockerContext: dotnet
     plan: free
+    autoDeploy: true
+    healthCheckPath: /health
     envVars:
       - key: ASPNETCORE_ENVIRONMENT
         value: Production
       - key: ASPNETCORE_URLS
         value: http://+:10000
+      # Preencha no painel do Render (não versionado): URI do Neon/Supabase.
       - key: ConnectionStrings__Default
-        fromDatabase:
-          name: collabdocs-db
-          property: connectionString
+        sync: false
+      # Mesmo valor de NEXTAUTH_SECRET na Vercel e no Worker.
       - key: Jwt__Secret
         sync: false
       - key: AllowedOrigins__0
         value: https://collabdocs-app.vercel.app
-    healthCheckPath: /api/health
-
-databases:
-  - name: collabdocs-db
-    plan: free
-    databaseName: collabdocs
-    user: collabdocs

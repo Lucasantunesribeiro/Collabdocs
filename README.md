@@ -147,9 +147,43 @@ npm run build && npm start & npx playwright test
 ## CI/CD
 
 - `.github/workflows/ci.yml` roda em `pull_request` e em `push` para `main`. Jobs: typecheck, lint, Vitest e build do Next. Depois E2E Playwright, `npm audit` e build mais testes unitários e de integração do .NET.
-- `.github/workflows/deploy.yml` faz o deploy da API .NET na AWS Lambda e roda **apenas** em `push` para `main`, nunca em PR. Ele é pulado quando os secrets AWS não estão configurados.
-- O frontend (Vercel, `vercel.json`) e o Worker (`wrangler deploy`, `wrangler.toml`) são publicados fora deste CI.
-- Para o tempo real funcionar com documentos da API .NET, o Worker publicado precisa de `DOCUMENTS_API_URL`.
+- `.github/workflows/deploy.yml` (API .NET na AWS Lambda) e `.github/workflows/deploy-worker.yml` (Cloudflare Worker) são **apenas manuais** (`workflow_dispatch`). Nenhum deploy roda em PR.
+- O frontend é publicado pela integração Git da Vercel e a API pelo Blueprint do Render (`render.yaml`), ambos fora deste CI.
+
+## Deploy gratuito
+
+Situação verificada em 2026-11-03 com `curl`:
+
+| Parte | URL | Estado |
+|---|---|---|
+| Frontend (Vercel Hobby) | https://collabdocs-app.vercel.app | 200; login GitHub/Google configurado |
+| Worker (Cloudflare free) | https://collab-docs.collabdocs.workers.dev | 200 em `/` e `/api/health` (versão anterior a este PR) |
+| API .NET (AWS Lambda) | Function URL antiga | 403 `This account is suspended` |
+
+Sem a API .NET o dashboard não lista nem cria documentos. A troca abaixo usa apenas planos gratuitos:
+
+| Parte | Plataforma | Arquivo |
+|---|---|---|
+| Frontend Next.js | Vercel (Hobby) | `vercel.json` |
+| API .NET | Render (web service free, Docker) | `render.yaml` |
+| PostgreSQL | Neon (free) ou Supabase (free) | — |
+| WebSocket/presença | Cloudflare Workers (free; Durable Objects SQLite) | `wrangler.toml`, `deploy-worker.yml` |
+| Redis / RabbitMQ | desligados (opcionais) | — |
+
+Passo a passo:
+
+1. **Neon:** crie um projeto e copie a connection string (`postgresql://...?sslmode=require`). A API aceita esse formato e aplica as migrations ao subir.
+2. **Render:** *New > Blueprint*, aponte para este repositório. Preencha `ConnectionStrings__Default` (URI do Neon) e `Jwt__Secret` (mesmo valor de `NEXTAUTH_SECRET`). Confira `AllowedOrigins__0`. A URL fica `https://<nome-do-serviço>.onrender.com`. Teste `GET /health`.
+3. **Vercel:** em *Settings > Environment Variables*, defina `DOTNET_API_URL=https://<serviço>.onrender.com/api` (o `vercel.json` não aponta mais para a Lambda), além de `NEXTAUTH_SECRET`, `NEXTAUTH_URL` e as credenciais OAuth. Faça um redeploy.
+4. **Worker:** `npx wrangler secret put NEXTAUTH_SECRET` uma vez. No GitHub, crie os secrets `CLOUDFLARE_API_TOKEN` e `CLOUDFLARE_ACCOUNT_ID` e as variáveis `DOCUMENTS_API_URL` (`https://<serviço>.onrender.com/api`) e `ALLOWED_ORIGINS`. Rode *Actions > Deploy Worker (Cloudflare)*.
+
+Limites do plano free que afetam a demo:
+
+- O Render adormece o serviço após ~15 min sem tráfego. A primeira chamada depois disso pode levar dezenas de segundos. O proxy da Vercel tem `maxDuration: 60`.
+- O Neon suspende o banco ocioso. A primeira consulta paga um atraso extra.
+- As filas de e-mail do Worker exigem plano pago e seguem desativadas.
+
+A pasta `aws/` e o `deploy.yml` descrevem a infraestrutura paga anterior (ECS/Lambda). Ficam como referência e não rodam sozinhos.
 
 ## Limitações conhecidas
 
