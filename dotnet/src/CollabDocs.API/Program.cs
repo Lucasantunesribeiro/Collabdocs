@@ -1,4 +1,6 @@
 using System.Text;
+using CollabDocs.API.Filters;
+using CollabDocs.Application.Authorization;
 using CollabDocs.Application.Handlers;
 using CollabDocs.Application.Interfaces;
 using CollabDocs.Domain.Interfaces;
@@ -30,6 +32,9 @@ builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<ICollaboratorRepository, CollaboratorRepository>();
 builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<IOutboxRepository, OutboxRepository>();
+
+// Política central de autorização por documento (owner/editor/viewer/leitor público)
+builder.Services.AddScoped<IDocumentAuthorizationService, DocumentAuthorizationService>();
 
 // MediatR
 builder.Services.AddMediatR(cfg =>
@@ -86,7 +91,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 
 builder.Services.AddAuthorization();
-builder.Services.AddControllers()
+builder.Services.AddControllers(o => o.Filters.Add<DocumentExceptionFilter>())
     .AddJsonOptions(o =>
     {
         // CamelCase for input binding (JS sends expectedVersion, not expected_version)

@@ -35,24 +35,25 @@ public class Document
 
     public void Update(string? content, string? title)
     {
+        if (title is not null)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(title);
+            if (title.Length > 255)
+                throw new ArgumentException("Title must be at most 255 characters", nameof(title));
+        }
         if (content is not null) Content = content;
         if (title is not null) Title = title;
         Version++;
         UpdatedAt = DateTime.UtcNow;
     }
 
-    public bool CanEdit(string userId, IEnumerable<DocumentCollaborator> collaborators)
+    public void ChangeVisibility(Visibility visibility)
     {
-        if (OwnerId == userId) return true;
-        return collaborators.Any(c =>
-            (c.UserId == userId) &&
-            (c.Permission == Permission.Editor || c.Permission == Permission.Owner));
+        if (Visibility == visibility) return;
+        Visibility = visibility;
+        Version++;
+        UpdatedAt = DateTime.UtcNow;
     }
 
-    public bool CanView(string userId, IEnumerable<DocumentCollaborator> collaborators)
-    {
-        if (Visibility == Visibility.Public) return true;
-        if (OwnerId == userId) return true;
-        return collaborators.Any(c => c.UserId == userId);
-    }
+    // Regras de acesso ficam em CollabDocs.Domain.Authorization.DocumentAccessPolicy.
 }

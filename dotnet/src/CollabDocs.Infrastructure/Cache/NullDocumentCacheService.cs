@@ -13,4 +13,7 @@ public class NullDocumentCacheService : IDocumentCacheService
 
     public Task InvalidateUserAsync(string userId, CancellationToken ct = default)
         => Task.CompletedTask;
+
+    public Task InvalidateAllAsync(CancellationToken ct = default)
+        => Task.CompletedTask;
 }

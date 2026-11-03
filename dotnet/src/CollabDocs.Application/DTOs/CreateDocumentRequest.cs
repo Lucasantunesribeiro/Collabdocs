@@ -5,5 +5,6 @@ namespace CollabDocs.Application.DTOs;
 public record CreateDocumentRequest(
     [Required][StringLength(255, MinimumLength = 1)] string Title,
     string? Content,
-    string Visibility = "public"
+    /// <summary>"public" | "private". Padrão: "private".</summary>
+    string Visibility = "private"
 );

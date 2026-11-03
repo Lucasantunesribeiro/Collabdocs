@@ -1,3 +1,4 @@
+using CollabDocs.Application.Authorization;
 using CollabDocs.Application.Commands;
 using CollabDocs.Application.Handlers;
 using CollabDocs.Application.Interfaces;
@@ -20,7 +21,9 @@ public class UpdateDocumentHandlerTests
     private readonly Mock<IDocumentCacheService> _cacheService = new();
 
     private UpdateDocumentHandler CreateHandler() =>
-        new(_documentRepo.Object, _collaboratorRepo.Object, _audit.Object, _outbox.Object, _cacheService.Object);
+        new(_documentRepo.Object,
+            new DocumentAuthorizationService(_documentRepo.Object, _collaboratorRepo.Object),
+            _audit.Object, _outbox.Object, _cacheService.Object);
 
     private static Document CreateDocument(string ownerId = "owner-1") =>
         Document.Create(ownerId, "Title", "Original content", Visibility.Public);
@@ -42,7 +45,7 @@ public class UpdateDocumentHandlerTests
     }
 
     [Fact]
-    public async Task Handle_NonOwnerWithoutCollaboration_ThrowsUnauthorized()
+    public async Task Handle_NonOwnerWithoutCollaboration_OnPublicDoc_ThrowsAccessDenied()
     {
         var doc = CreateDocument("owner-1");
         _documentRepo.Setup(r => r.GetByIdAsync(doc.Id, It.IsAny<CancellationToken>())).ReturnsAsync(doc);
@@ -53,7 +56,8 @@ public class UpdateDocumentHandlerTests
             new UpdateDocumentCommand(doc.Id, "other-user", "Hack", null, null),
             CancellationToken.None);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>();
+        // Documento público: o estranho consegue ler, então a resposta é 403 (não 404).
+        await act.Should().ThrowAsync<DocumentAccessDeniedException>();
     }
 
     [Fact]
@@ -69,7 +73,7 @@ public class UpdateDocumentHandlerTests
             new UpdateDocumentCommand(doc.Id, "owner-1", "Content", null, ExpectedVersion: 999),
             CancellationToken.None);
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<DocumentVersionConflictException>()
             .WithMessage("*modified by another user*");
     }
 
