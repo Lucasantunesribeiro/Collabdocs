@@ -8,5 +8,6 @@ public record AddCollaboratorCommand(
     Guid DocumentId,
     string RequestingUserId,
     string CollaboratorEmail,
-    Permission Permission
+    Permission Permission,
+    string? RequestingUserEmail = null
 ) : IRequest<CollaboratorDto>;

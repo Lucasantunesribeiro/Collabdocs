@@ -1,15 +1,15 @@
 import type { AuthenticatedUser } from '../domain/types';
 import type { EmailNotificationMessage } from '../queues/emailConsumer';
 import {
-  findDocumentById,
   findCollaborators,
   findUserById,
   addCollaboratorRecord,
   removeCollaboratorRecord,
-  checkCollaboratorAccess,
   logAuditEvent,
 } from '../infrastructure/db';
 import { logger } from '../lib/logger';
+import { authorizeDocument } from './access';
+import { can, normalizeEmail } from '../domain/authorization';
 
 export interface CollaboratorEntry {
   id: string;
@@ -33,28 +33,10 @@ export async function listCollaborators(
   user: AuthenticatedUser,
   documentId: string
 ): Promise<CollaboratorEntry[]> {
-  const doc = await findDocumentById(db, documentId);
+  const { doc, role } = await authorizeDocument(db, user, documentId, 'read');
 
-  if (!doc) {
-    const err = new Error('Document not found');
-    (err as any).status = 404;
-    throw err;
-  }
-
-  const isOwner = doc.owner_id === user.id;
-  const collaboratorPermission = await checkCollaboratorAccess(
-    db,
-    documentId,
-    user.id,
-    user.email
-  );
-  const isPublic = doc.visibility === 'public';
-
-  if (!isOwner && !collaboratorPermission && !isPublic) {
-    const err = new Error('You do not have permission to view collaborators for this document');
-    (err as any).status = 403;
-    throw err;
-  }
+  // Leitor de documento público (não colaborador) não vê e-mails de colaboradores.
+  if (!can(role, 'list_collaborators')) return [];
 
   let collaborators = await findCollaborators(db, documentId);
 
@@ -101,28 +83,24 @@ export async function addCollaborator(
   permission: string,
   notificationQueue?: Queue<EmailNotificationMessage>
 ): Promise<void> {
-  const doc = await findDocumentById(db, documentId);
+  const { doc } = await authorizeDocument(db, user, documentId, 'manage_collaborators');
 
-  if (!doc) {
-    const err = new Error('Document not found');
-    (err as any).status = 404;
-    throw err;
-  }
-
-  if (doc.owner_id !== user.id) {
-    const err = new Error('Only the document owner can add collaborators');
-    (err as any).status = 403;
-    throw err;
-  }
-
-  if (!email || !email.includes('@')) {
+  if (!email || typeof email !== 'string' || !email.includes('@')) {
     const err = new Error('A valid email address is required');
     (err as any).status = 400;
     throw err;
   }
 
+  // "owner" é rejeitado: posse não é transferível/compartilhável por esta rota.
   if (!['read', 'write'].includes(permission)) {
     const err = new Error('Permission must be "read" or "write"');
+    (err as any).status = 400;
+    throw err;
+  }
+
+  email = normalizeEmail(email);
+  if (email === normalizeEmail(user.email)) {
+    const err = new Error('The document owner cannot be added as a collaborator');
     (err as any).status = 400;
     throw err;
   }
@@ -156,25 +134,15 @@ export async function removeCollaborator(
   documentId: string,
   email: string
 ): Promise<void> {
-  const doc = await findDocumentById(db, documentId);
-
-  if (!doc) {
-    const err = new Error('Document not found');
-    (err as any).status = 404;
-    throw err;
-  }
-
-  if (doc.owner_id !== user.id) {
-    const err = new Error('Only the document owner can remove collaborators');
-    (err as any).status = 403;
-    throw err;
-  }
+  await authorizeDocument(db, user, documentId, 'manage_collaborators');
 
   if (!email) {
     const err = new Error('Collaborator email is required');
     (err as any).status = 400;
     throw err;
   }
+
+  email = normalizeEmail(email);
 
   await removeCollaboratorRecord(db, documentId, email);
 

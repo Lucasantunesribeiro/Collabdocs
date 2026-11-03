@@ -14,12 +14,16 @@ public class DocumentRepository(AppDbContext context) : IDocumentRepository
     public async Task<IReadOnlyList<Document>> GetByOwnerOrCollaboratorAsync(
         string userId, string userEmail, CancellationToken cancellationToken = default)
     {
+        // Mesmo critério de DocumentAccessPolicy: dono, colaborador (userId ou e-mail,
+        // sem diferenciar maiúsculas) ou documento público.
+        var email = (userEmail ?? string.Empty).Trim().ToLower();
         return await context.Documents
             .Where(d => d.Visibility == Visibility.Public ||
                         d.OwnerId == userId ||
                         context.DocumentCollaborators.Any(dc =>
                             dc.DocumentId == d.Id &&
-                            (dc.UserId == userId || dc.UserEmail == userEmail)))
+                            ((dc.UserId != "" && dc.UserId == userId) ||
+                             (email != "" && dc.UserEmail.ToLower() == email))))
             .OrderByDescending(d => d.UpdatedAt)
             .ToListAsync(cancellationToken);
     }

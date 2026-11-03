@@ -141,7 +141,9 @@ class SecureApiService {
     const result = await this.authenticatedRequest<{ document: Document }>(
       this.dotnetApiUrl, `/documents/${id}`, session
     )
-    return { document: result.document, permission: 'owner' }
+    // O papel vem do servidor; nunca assumir "owner" no cliente.
+    const permission = result.document.permission ?? (result.document.is_owner ? 'owner' : 'read')
+    return { document: result.document, permission }
   }
 
   async createDocument(data: CreateDocumentRequest, session: NextAuthSession): Promise<{ document: Document }> {

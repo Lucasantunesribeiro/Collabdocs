@@ -61,6 +61,7 @@ async function verifyTokenString(
       email,
       name,
       provider,
+      exp: payload.exp as number,
     };
   } catch {
     return null;
@@ -132,9 +133,10 @@ async function verifyJWT(
     return null;
   }
 
-  // Validate expiration
+  // Expiração obrigatória (mesma regra da API .NET, que exige "exp"):
+  // token sem "exp" valeria para sempre e não poderia ser revogado pelo tempo.
   const now = Math.floor(Date.now() / 1000);
-  if (typeof payload.exp === 'number' && payload.exp < now) {
+  if (typeof payload.exp !== 'number' || !Number.isFinite(payload.exp) || payload.exp < now) {
     return null;
   }
 

@@ -19,10 +19,17 @@ public class CollaboratorRepository(AppDbContext context) : ICollaboratorReposit
         await context.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task UpdateAsync(DocumentCollaborator collaborator, CancellationToken cancellationToken = default)
+    {
+        context.DocumentCollaborators.Update(collaborator);
+        await context.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task RemoveAsync(Guid documentId, string userEmail, CancellationToken cancellationToken = default)
     {
         var collab = await context.DocumentCollaborators
-            .FirstOrDefaultAsync(dc => dc.DocumentId == documentId && dc.UserEmail == userEmail, cancellationToken);
+            .FirstOrDefaultAsync(dc => dc.DocumentId == documentId
+                && dc.UserEmail.ToLower() == userEmail.Trim().ToLower(), cancellationToken);
         if (collab is not null)
         {
             context.DocumentCollaborators.Remove(collab);

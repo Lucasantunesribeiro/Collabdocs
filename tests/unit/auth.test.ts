@@ -160,7 +160,7 @@ describe('verifyToken', () => {
     expect(result?.provider).toBe('unknown');
   });
 
-  it('accepts a token with no exp claim (no expiration)', async () => {
+  it('rejects a token with no exp claim (would never expire; .NET API also requires exp)', async () => {
     const token = await signHS256(
       { sub: 'noexp', email: 'noexp@example.com', name: 'NoExp' },
       SECRET
@@ -168,7 +168,22 @@ describe('verifyToken', () => {
     const req = makeRequest(`Bearer ${token}`);
     const result = await verifyToken(req, SECRET);
 
-    expect(result).not.toBeNull();
-    expect(result?.id).toBe('user-noexp');
+    expect(result).toBeNull();
+  });
+
+  it('rejects a token whose exp is not a number', async () => {
+    const token = await signHS256(
+      { sub: 'badexp', email: 'badexp@example.com', name: 'BadExp', exp: '9999999999' },
+      SECRET
+    );
+    const result = await verifyToken(makeRequest(`Bearer ${token}`), SECRET);
+    expect(result).toBeNull();
+  });
+
+  it('exposes the token exp on the authenticated user', async () => {
+    const exp = Math.floor(Date.now() / 1000) + 600;
+    const token = await signHS256({ sub: 'e', email: 'e@example.com', name: 'E', exp }, SECRET);
+    const result = await verifyToken(makeRequest(`Bearer ${token}`), SECRET);
+    expect(result?.exp).toBe(exp);
   });
 });

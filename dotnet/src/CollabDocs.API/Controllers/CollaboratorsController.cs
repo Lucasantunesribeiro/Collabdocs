@@ -23,19 +23,12 @@ public class CollaboratorsController(ISender sender) : ControllerBase
 
     [HttpGet]
     [ProducesResponseType(typeof(List<CollaboratorDto>), 200)]
-    [ProducesResponseType(403)]
     [ProducesResponseType(404)]
     public async Task<IActionResult> GetCollaborators(Guid documentId, CancellationToken cancellationToken)
     {
-        try
-        {
-            var result = await sender.Send(
-                new GetCollaboratorsQuery(documentId, UserId, UserEmail), cancellationToken);
-            return Ok(new { collaborators = result, total = result.Count });
-        }
-        catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
-        catch (UnauthorizedAccessException) { return Forbid(); }
-        catch (Exception ex) { return StatusCode(500, new { error = "Failed to load collaborators", detail = ex.Message }); }
+        var result = await sender.Send(
+            new GetCollaboratorsQuery(documentId, UserId, UserEmail), cancellationToken);
+        return Ok(new { collaborators = result, total = result.Count });
     }
 
     [HttpPost]
@@ -49,14 +42,9 @@ public class CollaboratorsController(ISender sender) : ControllerBase
         CancellationToken cancellationToken)
     {
         var permission = ParsePermission(request.Permission);
-        try
-        {
-            var result = await sender.Send(
-                new AddCollaboratorCommand(documentId, UserId, request.Email, permission), cancellationToken);
-            return StatusCode(201, new { collaborator = result });
-        }
-        catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
-        catch (UnauthorizedAccessException) { return Forbid(); }
+        var result = await sender.Send(
+            new AddCollaboratorCommand(documentId, UserId, request.Email, permission, UserEmail), cancellationToken);
+        return StatusCode(201, new { collaborator = result });
     }
 
     [HttpDelete]
@@ -69,21 +57,20 @@ public class CollaboratorsController(ISender sender) : ControllerBase
         [FromBody] RemoveCollaboratorRequest request,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            await sender.Send(
-                new RemoveCollaboratorCommand(documentId, UserId, request.Email), cancellationToken);
-            return NoContent();
-        }
-        catch (KeyNotFoundException ex) { return NotFound(new { error = ex.Message }); }
-        catch (UnauthorizedAccessException) { return Forbid(); }
+        await sender.Send(
+            new RemoveCollaboratorCommand(documentId, UserId, request.Email, UserEmail), cancellationToken);
+        return NoContent();
     }
 
-    /// <summary>Maps frontend permission string to the domain enum.</summary>
-    private static Permission ParsePermission(string raw) => raw.ToLowerInvariant() switch
+    /// <summary>
+    /// Mapeia a permissão do frontend para o enum de domínio. "owner" é rejeitado com 400
+    /// pelo handler (posse não é transferível por esta rota); valores desconhecidos também.
+    /// </summary>
+    private static Permission ParsePermission(string? raw) => raw?.Trim().ToLowerInvariant() switch
     {
         "write" or "editor" => Permission.Editor,
-        "owner"             => Permission.Owner,
-        _                   => Permission.Viewer,  // "read" or unknown → safe default
+        "read" or "viewer" or null or "" => Permission.Viewer,
+        "owner" => Permission.Owner,
+        _ => throw new ArgumentException("Permission must be 'read' or 'write'"),
     };
 }

@@ -1,6 +1,6 @@
 # AWS Lambda Deployment — CollabDocs .NET API
 #
-# Triggers on push to main when dotnet/** files change.
+# Disparo manual (workflow_dispatch). Veja a seção "Deploy gratuito" do README.
 # Uses OIDC (no static AWS keys) for short-lived credentials.
 #
 # Required GitHub secrets:
@@ -13,12 +13,11 @@
 
 name: Deploy .NET API to Lambda
 
+# Somente manual: a conta AWS da demo está suspensa (Function URL responde
+# 403 "This account is suspended") e o deploy gratuito da API passou a ser o
+# Render (render.yaml). Mantido para quem quiser publicar na própria conta AWS.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "dotnet/**"
-      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
 
 permissions:
   id-token: write   # required for OIDC token exchange

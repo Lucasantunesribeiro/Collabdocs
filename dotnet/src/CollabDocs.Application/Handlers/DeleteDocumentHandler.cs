@@ -1,6 +1,8 @@
 using System.Text.Json;
+using CollabDocs.Application.Authorization;
 using CollabDocs.Application.Commands;
 using CollabDocs.Application.Interfaces;
+using CollabDocs.Domain.Authorization;
 using CollabDocs.Domain.Events;
 using CollabDocs.Domain.Interfaces;
 using CollabDocs.Domain.Outbox;
@@ -11,6 +13,7 @@ namespace CollabDocs.Application.Handlers;
 public class DeleteDocumentHandler(
     IDocumentRepository documentRepository,
     ICollaboratorRepository collaboratorRepository,
+    IDocumentAuthorizationService authorization,
     IAuditService auditService,
     IOutboxRepository outboxRepository,
     IDocumentCacheService cacheService
@@ -18,11 +21,9 @@ public class DeleteDocumentHandler(
 {
     public async Task Handle(DeleteDocumentCommand request, CancellationToken cancellationToken)
     {
-        var document = await documentRepository.GetByIdAsync(request.DocumentId, cancellationToken)
-            ?? throw new KeyNotFoundException($"Document {request.DocumentId} not found");
-
-        if (document.OwnerId != request.UserId)
-            throw new UnauthorizedAccessException("Only the owner can delete this document");
+        var access = await authorization.AuthorizeAsync(
+            request.DocumentId, request.UserId, request.UserEmail, DocumentOperation.Delete, cancellationToken);
+        var document = access.Document;
 
         // Stage outbox message, collaborator removals, and document deletion —
         // all committed atomically by SaveChanges inside DeleteAsync
@@ -42,6 +43,7 @@ public class DeleteDocumentHandler(
 
         await documentRepository.DeleteAsync(request.DocumentId, cancellationToken);
         await auditService.LogAsync(request.DocumentId, request.UserId, "deleted");
-        await cacheService.InvalidateUserAsync(request.UserId, cancellationToken);
+        // Colaboradores e leitores de documento público também tinham o documento em cache.
+        await cacheService.InvalidateAllAsync(cancellationToken);
     }
 }

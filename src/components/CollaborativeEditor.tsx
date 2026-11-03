@@ -12,7 +12,12 @@ interface CollaborativeEditorProps {
     user: { id: string; name: string; email: string; image?: string };
     sessionToken?: string;
   } | null;
+  /** Viewer/leitor público: o servidor rejeita escrita (403) e o Worker descarta "update". */
+  readOnly?: boolean;
 }
+
+/** Código de fechamento enviado pelo Worker quando a autorização da sessão vence. */
+const REAUTH_CLOSE_CODE = 4001;
 
 function useCollaboration(
   documentId: string,
@@ -28,25 +33,45 @@ function useCollaboration(
     if (!documentId || documentId === 'demo' || !token) return;
 
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'wss://collab-docs.collabdocs.workers.dev';
-    // Pass JWT as ?token= because browsers cannot set custom headers on WS upgrades.
-    // The Worker router verifies the token and injects server-trusted identity params.
-    const ws = new WebSocket(
-      `${wsUrl}/api/documents/${documentId}/ws?token=${encodeURIComponent(token)}`
-    );
+    let disposed = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'connected') setConnectedUsers(msg.users);
-        else if (msg.type === 'join') setConnectedUsers(prev => [...prev, { userId: msg.userId, userName: msg.userName }]);
-        else if (msg.type === 'leave') setConnectedUsers(prev => prev.filter(u => u.userId !== msg.userId));
-        else if (msg.type === 'update' && typeof msg.content === 'string') onRemoteUpdateRef.current(msg.content);
-      } catch { /* ignore malformed messages */ }
+    const connect = () => {
+      // Pass JWT as ?token= because browsers cannot set custom headers on WS upgrades.
+      // The Worker router verifies the token and injects server-trusted identity params.
+      const ws = new WebSocket(
+        `${wsUrl}/api/documents/${documentId}/ws?token=${encodeURIComponent(token)}`
+      );
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'connected') setConnectedUsers(msg.users);
+          else if (msg.type === 'join') setConnectedUsers(prev => [...prev, { userId: msg.userId, userName: msg.userName }]);
+          else if (msg.type === 'leave') setConnectedUsers(prev => prev.filter(u => u.userId !== msg.userId));
+          else if (msg.type === 'update' && typeof msg.content === 'string') onRemoteUpdateRef.current(msg.content);
+        } catch { /* ignore malformed messages */ }
+      };
+
+      // 4001 = prazo da autorização venceu no servidor: reconecta para o Worker
+      // reavaliar o papel. Se o acesso foi revogado, o novo upgrade é recusado e
+      // a sessão em tempo real simplesmente termina (sem laço de reconexão).
+      ws.onclose = (event) => {
+        if (disposed || event.code !== REAUTH_CLOSE_CODE) return;
+        setConnectedUsers([]);
+        reconnectTimer = setTimeout(connect, 500);
+      };
+
+      ws.onerror = () => {}; // silent fail for demo
+      wsRef.current = ws;
     };
 
-    ws.onerror = () => {}; // silent fail for demo
-    wsRef.current = ws;
-    return () => ws.close();
+    connect();
+    return () => {
+      disposed = true;
+      clearTimeout(reconnectTimer);
+      wsRef.current?.close();
+    };
   }, [documentId, token]);
 
   const broadcast = useCallback((content: string) => {
@@ -58,7 +83,7 @@ function useCollaboration(
   return { connectedUsers, broadcast };
 }
 
-export function CollaborativeEditor({ documentId, initialContent, session }: CollaborativeEditorProps) {
+export function CollaborativeEditor({ documentId, initialContent, session, readOnly = false }: CollaborativeEditorProps) {
   const router = useRouter();
   const [content, setContent] = useState(initialContent);
   const [isTyping, setIsTyping] = useState(false);
@@ -86,6 +111,7 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
   }, [content, isTyping, isDirty, documentId]);
 
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    if (readOnly) return;
     const newContent = e.target.value;
     setContent(newContent);
     setIsTyping(true);
@@ -95,7 +121,7 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
   };
 
   const handleAutoSave = async () => {
-    if (!isDirty || !session) return;
+    if (readOnly || !isDirty || !session) return;
     setIsSaving(true);
     setSaveStatus('saving');
     setSaveError(null);
@@ -192,7 +218,7 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
 
   const saveStatusConfig = {
     saved: { icon: 'check_circle', color: 'text-success', text: 'Salvo' },
-    saving: { icon: 'sync', color: 'text-primary', text: 'Salvando...' },
+    saving: { icon: 'sync', color: 'text-primary-light', text: 'Salvando...' },
     error: { icon: 'error', color: 'text-error', text: 'Erro ao salvar' },
   }[saveStatus];
 
@@ -323,6 +349,8 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
           <textarea
             value={content}
             onChange={handleContentChange}
+            readOnly={readOnly}
+            aria-readonly={readOnly}
             className="flex-1 w-full p-6 md:p-10 bg-transparent text-on-surface font-mono text-base leading-relaxed resize-none focus:outline-none placeholder:text-on-surface-variant"
             placeholder="Comece a escrever seu documento..."
             style={{ minHeight: 'calc(100vh - 200px)' }}
@@ -334,7 +362,7 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
             <span>{content.trim().split(/\s+/).filter(Boolean).length} palavras</span>
             <span>{content.split('\n').length} linhas</span>
             {isTyping && (
-              <span className="flex items-center gap-1 text-primary">
+              <span className="flex items-center gap-1 text-primary-light">
                 <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
                 Digitando...
               </span>

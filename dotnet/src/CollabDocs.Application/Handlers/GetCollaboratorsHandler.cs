@@ -1,41 +1,29 @@
+using CollabDocs.Application.Authorization;
 using CollabDocs.Application.DTOs;
 using CollabDocs.Application.Queries;
+using CollabDocs.Domain.Authorization;
 using CollabDocs.Domain.Entities;
 using CollabDocs.Domain.Enums;
-using CollabDocs.Domain.Interfaces;
 using MediatR;
 
 namespace CollabDocs.Application.Handlers;
 
 public class GetCollaboratorsHandler(
-    IDocumentRepository documentRepository,
-    ICollaboratorRepository collaboratorRepository
+    IDocumentAuthorizationService authorization
 ) : IRequestHandler<GetCollaboratorsQuery, List<CollaboratorDto>>
 {
     public async Task<List<CollaboratorDto>> Handle(GetCollaboratorsQuery request, CancellationToken cancellationToken)
     {
-        var document = await documentRepository.GetByIdAsync(request.DocumentId, cancellationToken)
-            ?? throw new KeyNotFoundException($"Document {request.DocumentId} not found");
+        // Sem leitura => 404. Leitor de documento público (não colaborador) recebe lista vazia
+        // para que o editor carregue sem expor e-mails dos colaboradores.
+        var access = await authorization.AuthorizeAsync(
+            request.DocumentId, request.RequestingUserId, request.RequestingUserEmail,
+            DocumentOperation.Read, cancellationToken);
 
-        var isOwner = document.OwnerId == request.RequestingUserId;
-        if (!isOwner)
-        {
-            var collaborators = await collaboratorRepository.GetByDocumentIdAsync(request.DocumentId, cancellationToken);
-            var isCollaborator = collaborators.Any(c =>
-                c.UserId == request.RequestingUserId ||
-                c.UserEmail.Equals(request.RequestingUserEmail, StringComparison.OrdinalIgnoreCase));
+        if (!access.Can(DocumentOperation.ListCollaborators))
+            return [];
 
-            if (!isCollaborator)
-            {
-                // Public documents: return empty list instead of 403 so the editor loads cleanly
-                if (document.Visibility == Visibility.Public)
-                    return [];
-                throw new UnauthorizedAccessException("Access denied");
-            }
-        }
-
-        var list = await collaboratorRepository.GetByDocumentIdAsync(request.DocumentId, cancellationToken);
-        return list.Select(ToDto).ToList();
+        return access.Collaborators.Select(ToDto).ToList();
     }
 
     private static CollaboratorDto ToDto(DocumentCollaborator c) => new(

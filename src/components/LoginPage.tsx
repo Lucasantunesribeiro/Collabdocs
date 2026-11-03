@@ -99,7 +99,7 @@ export function LoginPage({ error: errorProp, callbackUrl }: LoginPageProps) {
         </div>
 
         <p className="text-center text-xs text-on-surface-variant mt-6">
-          Ao continuar, você concorda com nossos termos de uso.
+          Usamos apenas nome, e-mail e foto do seu provedor para identificar você.
         </p>
       </div>
     </div>

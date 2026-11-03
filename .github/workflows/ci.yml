@@ -6,10 +6,18 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  quality:
-    name: Type Check & Build
+  web:
+    name: Web + Worker (typecheck, lint, testes, build)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -17,32 +25,22 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci --legacy-peer-deps
-      - name: Type check (Next.js)
+      - name: Typecheck (Next.js)
         run: npm run typecheck
-      - name: Type check (Workers)
+      - name: Typecheck (Worker)
         run: npm run typecheck:workers
       - name: Lint
         run: npm run lint
+      - name: Testes unitários (Vitest)
+        run: npm test
       - name: Build
         run: npm run build
 
-  test:
-    name: Unit Tests
-    runs-on: ubuntu-latest
-    needs: quality
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-      - run: npm ci --legacy-peer-deps
-      - run: npm test
-
   e2e:
-    name: E2E Tests
+    name: E2E (Playwright)
     runs-on: ubuntu-latest
-    needs: quality
+    needs: web
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -50,14 +48,14 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci --legacy-peer-deps
-      - name: Install Playwright
+      - name: Instalar Chromium
         run: npx playwright install chromium --with-deps
       - name: Build
         run: npm run build
-      - name: Start server & run E2E
+      - name: Subir servidor e rodar E2E
         run: |
           npm run start &
-          npx wait-on http://localhost:3000 --timeout 30000
+          npx wait-on http://localhost:3000 --timeout 60000
           npm run test:e2e
         env:
           BASE_URL: http://localhost:3000
@@ -74,9 +72,10 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
-  security:
-    name: Security Audit
+  audit:
+    name: npm audit (dependências de produção)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -86,20 +85,30 @@ jobs:
       - run: npm ci --legacy-peer-deps
       - run: npm audit --omit=dev --audit-level=critical
 
-  dotnet-test:
-    name: .NET Tests
+  dotnet:
+    name: .NET (build, unitários, integração)
     runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: dotnet
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
+      - name: Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('dotnet/**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
       - name: Restore
         run: dotnet restore
-        working-directory: dotnet
       - name: Build
-        run: dotnet build --no-restore
-        working-directory: dotnet
-      - name: Test
-        run: dotnet test --no-build --verbosity normal
-        working-directory: dotnet
+        run: dotnet build --no-restore -c Release
+      - name: Testes unitários
+        run: dotnet test tests/CollabDocs.Tests.Unit --no-build -c Release
+      # Testcontainers sobe PostgreSQL via Docker (disponível no ubuntu-latest).
+      - name: Testes de integração
+        run: dotnet test tests/CollabDocs.Tests.Integration --no-build -c Release

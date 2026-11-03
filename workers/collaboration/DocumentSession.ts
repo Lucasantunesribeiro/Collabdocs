@@ -1,22 +1,28 @@
+import { canConnect, REAUTH_CLOSE_CODE, VERIFIED_PARAMS } from './access';
+import { isSessionExpired, parseClientMessage, type SessionIdentity } from './messages';
+import { ALL_ROLES, type DocumentRole } from '../domain/authorization';
+
 export interface Env {
   DB: D1Database;
 }
 
-interface SessionMessage {
-  type: 'update' | 'cursor' | 'join' | 'leave';
+interface ServerMessage {
+  type: 'join' | 'leave';
   userId: string;
   userName: string;
   documentId: string;
-  content?: string;
-  cursor?: { line: number; ch: number };
 }
 
 interface ConnectedClient {
   socket: WebSocket;
-  userId: string;
-  userName: string;
+  identity: SessionIdentity;
 }
 
+/**
+ * Sessão de colaboração por documento. Só é alcançável pelo router do Worker,
+ * que autentica o JWT e autoriza o papel ANTES de encaminhar. Aqui o DO confia
+ * apenas nos parâmetros "__verified_*" e reaplica a política por mensagem.
+ */
 export class DocumentSession {
   private state: DurableObjectState;
   private clients: Map<string, ConnectedClient> = new Map();
@@ -31,66 +37,99 @@ export class DocumentSession {
     }
 
     const url = new URL(request.url);
-    // Use server-verified identity params set by the router after JWT validation.
-    // Client-supplied userId/userName params are intentionally ignored.
-    const userId = url.searchParams.get('__verified_userId');
-    const userName = url.searchParams.get('__verified_userName') || 'User';
+    const userId = url.searchParams.get(VERIFIED_PARAMS.userId);
+    const userName = url.searchParams.get(VERIFIED_PARAMS.userName) || 'User';
+    const documentId = url.searchParams.get(VERIFIED_PARAMS.documentId) || '';
+    const rawRole = url.searchParams.get(VERIFIED_PARAMS.role) as DocumentRole | null;
+    const role: DocumentRole = rawRole && ALL_ROLES.includes(rawRole) ? rawRole : 'none';
+    const expiresAt = Number(url.searchParams.get(VERIFIED_PARAMS.expiresAt));
 
-    if (!userId) {
+    // Sem identidade ou sem prazo válido (ausente/vencido) => não abre a sessão.
+    if (!userId || !documentId || isSessionExpired({ expiresAt })) {
       return new Response('Unauthorized', { status: 401 });
+    }
+    if (!canConnect(role)) {
+      return new Response('Not Found', { status: 404 });
     }
 
     const { 0: client, 1: server } = new WebSocketPair();
-    this.handleSession(server, userId, userName);
+    this.handleSession(server, { userId, userName, documentId, role, expiresAt });
 
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  private handleSession(socket: WebSocket, userId: string, userName: string): void {
+  private handleSession(socket: WebSocket, identity: SessionIdentity): void {
     socket.accept();
 
-    const clientId = `${userId}-${Date.now()}`;
-    this.clients.set(clientId, { socket, userId, userName });
+    const clientId = `${identity.userId}-${crypto.randomUUID()}`;
+    const connectedUsers = Array.from(this.clients.values()).map((c) => ({
+      userId: c.identity.userId,
+      userName: c.identity.userName,
+    }));
+    this.clients.set(clientId, { socket, identity });
 
-    // Notify others of join
-    this.broadcast({
-      type: 'join',
-      userId,
-      userName,
-      documentId: '',
-    }, clientId);
+    this.broadcast(
+      { type: 'join', userId: identity.userId, userName: identity.userName, documentId: identity.documentId },
+      clientId
+    );
 
-    // Send current user list to new client
-    const connectedUsers = Array.from(this.clients.values())
-      .filter(c => c !== this.clients.get(clientId))
-      .map(c => ({ userId: c.userId, userName: c.userName }));
+    socket.send(
+      JSON.stringify({ type: 'connected', users: connectedUsers, role: identity.role })
+    );
 
-    socket.send(JSON.stringify({ type: 'connected', users: connectedUsers }));
+    // Ao vencer o prazo da autorização, encerra a sessão; o cliente reconecta e o
+    // router resolve o papel de novo (pega revogações e mudança de visibilidade).
+    const expire = () => {
+      this.clients.delete(clientId);
+      try {
+        socket.close(REAUTH_CLOSE_CODE, 'reauth');
+      } catch {
+        /* já fechado */
+      }
+    };
+    const timer = setTimeout(expire, Math.max(0, identity.expiresAt - Date.now()));
 
     socket.addEventListener('message', (event) => {
-      try {
-        const msg: SessionMessage = JSON.parse(event.data as string);
-        this.broadcast(msg, clientId);
-      } catch {
-        // ignore malformed messages
+      const result = parseClientMessage(event.data, identity);
+      if (!result.ok) {
+        if (result.reason === 'expired') {
+          expire();
+          return;
+        }
+        if (result.reason === 'forbidden') {
+          socket.send(JSON.stringify({ type: 'error', error: 'forbidden', message: 'Read-only access' }));
+        }
+        return;
       }
+      this.broadcast(result.message, clientId);
     });
 
     socket.addEventListener('close', () => {
+      clearTimeout(timer);
       this.clients.delete(clientId);
-      this.broadcast({ type: 'leave', userId, userName, documentId: '' }, clientId);
+      this.broadcast(
+        { type: 'leave', userId: identity.userId, userName: identity.userName, documentId: identity.documentId },
+        clientId
+      );
     });
 
     socket.addEventListener('error', () => {
+      clearTimeout(timer);
       this.clients.delete(clientId);
     });
   }
 
-  private broadcast(msg: SessionMessage, excludeClientId?: string): void {
+  private broadcast(msg: ServerMessage | object, excludeClientId?: string): void {
     const payload = JSON.stringify(msg);
     for (const [id, client] of this.clients) {
       if (id === excludeClientId) continue;
       try {
+        // Destinatário com autorização vencida não recebe mais conteúdo.
+        if (isSessionExpired(client.identity)) {
+          this.clients.delete(id);
+          client.socket.close(REAUTH_CLOSE_CODE, 'reauth');
+          continue;
+        }
         client.socket.send(payload);
       } catch {
         this.clients.delete(id);

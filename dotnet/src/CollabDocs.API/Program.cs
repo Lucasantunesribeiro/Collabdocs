@@ -1,4 +1,6 @@
 using System.Text;
+using CollabDocs.API.Filters;
+using CollabDocs.Application.Authorization;
 using CollabDocs.Application.Handlers;
 using CollabDocs.Application.Interfaces;
 using CollabDocs.Domain.Interfaces;
@@ -20,9 +22,11 @@ using StackExchange.Redis;
 var builder = WebApplication.CreateBuilder(args);
 
 // Database
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("Default")
-        ?? throw new InvalidOperationException("Connection string 'Default' is required")));
+// Aceita formato Npgsql ou URI postgresql:// (Neon/Supabase/Render).
+var defaultConnection = PostgresConnectionString.Normalize(
+    builder.Configuration.GetConnectionString("Default")
+        ?? throw new InvalidOperationException("Connection string 'Default' is required"));
+builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(defaultConnection));
 
 // Repositories
 builder.Services.AddScoped<IDocumentRepository, DocumentRepository>();
@@ -30,6 +34,9 @@ builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<ICollaboratorRepository, CollaboratorRepository>();
 builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<IOutboxRepository, OutboxRepository>();
+
+// Política central de autorização por documento (owner/editor/viewer/leitor público)
+builder.Services.AddScoped<IDocumentAuthorizationService, DocumentAuthorizationService>();
 
 // MediatR
 builder.Services.AddMediatR(cfg =>
@@ -79,6 +86,11 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         {
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+            // Mesmo contrato do Worker: somente HS256 e "exp" obrigatório.
+            ValidAlgorithms = [SecurityAlgorithms.HmacSha256],
+            RequireExpirationTime = true,
+            ValidateLifetime = true,
+            RequireSignedTokens = true,
             ValidateIssuer = false,
             ValidateAudience = false,
             ClockSkew = TimeSpan.FromMinutes(5)
@@ -86,7 +98,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 
 builder.Services.AddAuthorization();
-builder.Services.AddControllers()
+builder.Services.AddControllers(o => o.Filters.Add<DocumentExceptionFilter>())
     .AddJsonOptions(o =>
     {
         // CamelCase for input binding (JS sends expectedVersion, not expected_version)

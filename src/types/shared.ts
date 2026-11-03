@@ -22,6 +22,8 @@ export interface Document {
   owner_name?: string;
   owner_avatar_url?: string;
   is_owner?: boolean; // Indica se o usuário atual é o proprietário
+  /** Papel efetivo do usuário atual, calculado pelo servidor. */
+  permission?: 'owner' | 'write' | 'read';
 }
 
 export interface Permission {
