@@ -12,6 +12,8 @@ interface CollaborativeEditorProps {
     user: { id: string; name: string; email: string; image?: string };
     sessionToken?: string;
   } | null;
+  /** Viewer/leitor público: o servidor rejeita escrita (403) e o Worker descarta "update". */
+  readOnly?: boolean;
 }
 
 function useCollaboration(
@@ -58,7 +60,7 @@ function useCollaboration(
   return { connectedUsers, broadcast };
 }
 
-export function CollaborativeEditor({ documentId, initialContent, session }: CollaborativeEditorProps) {
+export function CollaborativeEditor({ documentId, initialContent, session, readOnly = false }: CollaborativeEditorProps) {
   const router = useRouter();
   const [content, setContent] = useState(initialContent);
   const [isTyping, setIsTyping] = useState(false);
@@ -86,6 +88,7 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
   }, [content, isTyping, isDirty, documentId]);
 
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    if (readOnly) return;
     const newContent = e.target.value;
     setContent(newContent);
     setIsTyping(true);
@@ -95,7 +98,7 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
   };
 
   const handleAutoSave = async () => {
-    if (!isDirty || !session) return;
+    if (readOnly || !isDirty || !session) return;
     setIsSaving(true);
     setSaveStatus('saving');
     setSaveError(null);
@@ -323,6 +326,8 @@ export function CollaborativeEditor({ documentId, initialContent, session }: Col
           <textarea
             value={content}
             onChange={handleContentChange}
+            readOnly={readOnly}
+            aria-readonly={readOnly}
             className="flex-1 w-full p-6 md:p-10 bg-transparent text-on-surface font-mono text-base leading-relaxed resize-none focus:outline-none placeholder:text-on-surface-variant"
             placeholder="Comece a escrever seu documento..."
             style={{ minHeight: 'calc(100vh - 200px)' }}

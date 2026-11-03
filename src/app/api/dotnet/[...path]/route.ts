@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { buildTargetUrl } from '@/lib/proxy-path'
 
 const DOTNET_API_URL = process.env.DOTNET_API_URL || 'http://localhost:5000/api'
 
 type RouteContext = { params: { path: string[] } }
 
 async function proxy(request: NextRequest, { params }: RouteContext): Promise<NextResponse> {
-  const targetUrl = `${DOTNET_API_URL}/${params.path.join('/')}`
+  const targetUrl = buildTargetUrl(DOTNET_API_URL, params.path)
+  if (!targetUrl) {
+    return NextResponse.json({ error: 'Not Found' }, { status: 404 })
+  }
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',

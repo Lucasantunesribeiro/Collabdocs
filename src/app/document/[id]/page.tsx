@@ -9,6 +9,7 @@ import type { Document } from '@/types/shared';
 
 export default function DocumentPage() {
   const [document, setDocument] = useState<Document | null>(null);
+  const [permission, setPermission] = useState<string>('read');
   const [isLoading, setIsLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +38,7 @@ export default function DocumentPage() {
 
         const response = await secureApiService.getDocument(documentId, session);
         setDocument(response.document);
+        setPermission(response.permission);
         setIsEditing(editMode);
         setIsLoading(false);
       } catch (err) {
@@ -98,6 +100,7 @@ export default function DocumentPage() {
         documentId={document.id}
         initialContent={document.content}
         session={session}
+        readOnly={permission === 'read'}
       />
     );
   }
